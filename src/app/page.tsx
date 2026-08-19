@@ -5,11 +5,15 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   BrainCircuit, Activity, Target, Network, Sparkles, FlaskConical, GitBranch, Cpu,
   Layers, Globe, Plug, Store, FileText, ShieldCheck, MessageSquare, BookOpen,
-  Sun, Moon, Menu, X, ChevronRight, Database,
+  Sun, Moon, Menu, ChevronRight, Database, LogIn, UserCircle, ShieldAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu'
 import { useTheme } from 'next-themes'
 import { toast } from 'sonner'
 import { CloneOsProvider, useCloneOs } from '@/components/clone-os/data'
@@ -17,19 +21,23 @@ import {
   OverviewSection, CloneScoreSection, ExpertiseGraphSection, TrainingStudioSection,
   FidelityLabSection, VersionsSection, AgentsSection, ModelRouterSection,
   EnvironmentsSection, ExtensionsSection, MarketplaceSection, OutcomeContractsSection,
-  ReputationSection, LiveChatSection, ArchitectureSection,
+  ReputationSection, LiveChatSection, ArchitectureSection, AdminSection,
 } from '@/components/clone-os/sections/sections'
+import {
+  AuthModal, SignOutButton, useCurrentUser,
+} from '@/components/clone-os/auth/auth-ui'
 
 type SectionId =
   | 'overview' | 'score' | 'graph' | 'training' | 'fidelity' | 'versions'
   | 'agents' | 'router' | 'environments' | 'extensions' | 'marketplace'
-  | 'contracts' | 'reputation' | 'chat' | 'architecture'
+  | 'contracts' | 'reputation' | 'chat' | 'architecture' | 'admin'
 
 interface NavItem {
   id: SectionId
   label: string
   icon: React.ReactNode
   layer: string
+  adminOnly?: boolean
 }
 
 const NAV: NavItem[] = [
@@ -48,6 +56,7 @@ const NAV: NavItem[] = [
   { id: 'reputation',   label: 'Reputation',           icon: <ShieldCheck className="h-4 w-4" />,    layer: 'L12 Market' },
   { id: 'chat',         label: 'Live Chat',            icon: <MessageSquare className="h-4 w-4" />,    layer: 'L8 Runtime' },
   { id: 'architecture', label: 'Architecture',         icon: <BookOpen className="h-4 w-4" />,        layer: 'L15 Governance' },
+  { id: 'admin',        label: 'Admin',                icon: <ShieldAlert className="h-4 w-4" />,     layer: 'L15 Governance', adminOnly: true },
 ]
 
 function ThemeToggle() {
@@ -104,10 +113,68 @@ function CloneBadge() {
   )
 }
 
-function NavList({ active, onSelect }: { active: SectionId; onSelect: (id: SectionId) => void }) {
+// Header user menu — Sign in / User dropdown
+function UserMenu({ onOpenAuth }: { onOpenAuth: () => void }) {
+  const { me, refresh } = useCurrentUser()
+  if (!me) {
+    return (
+      <Button variant="default" size="sm" className="h-9 bg-emerald-600 hover:bg-emerald-700" onClick={onOpenAuth}>
+        <LogIn className="h-4 w-4 mr-2" />Sign in
+      </Button>
+    )
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9 gap-2">
+          <UserCircle className="h-4 w-4 text-emerald-600" />
+          <span className="hidden sm:inline text-xs">{me.name}</span>
+          {me.accountStatus === 'admin' && <Badge variant="outline" className="bg-emerald-100 text-emerald-800 text-[9px] uppercase">Admin</Badge>}
+          {me.accountStatus === 'demo' && <Badge variant="outline" className="bg-amber-100 text-amber-800 text-[9px] uppercase">Demo</Badge>}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="text-xs">
+          <div className="font-medium">{me.name}</div>
+          <div className="text-muted-foreground font-normal">{me.email}</div>
+          <div className="mt-1 text-[10px] text-muted-foreground">Role: {me.role} · Status: {me.accountStatus}</div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-xs" onClick={() => toast.info('Architecture documentation', { description: 'docs/ARCHITECTURE.md · docs/adr/README.md' })}>
+          <BookOpen className="h-3.5 w-3.5 mr-2" /> Architecture docs
+        </DropdownMenuItem>
+        <SignOutButtonWrapper onDone={refresh} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+// Wrapper so SignOutButton can be a menu item
+function SignOutButtonWrapper({ onDone }: { onDone: () => void }) {
+  const [loading, setLoading] = React.useState(false)
+  return (
+    <DropdownMenuItem
+      className="text-xs text-rose-700 focus:text-rose-700"
+      disabled={loading}
+      onSelect={async (e) => {
+        e.preventDefault()
+        setLoading(true)
+        const { signOut } = await import('next-auth/react')
+        await signOut({ redirect: false })
+        setLoading(false)
+        toast.success('Signed out')
+        onDone()
+      }}
+    >
+      <LogIn className="h-3.5 w-3.5 mr-2 rotate-180" /> {loading ? 'Signing out…' : 'Sign out'}
+    </DropdownMenuItem>
+  )
+}
+
+function NavList({ active, onSelect, isAdmin }: { active: SectionId; onSelect: (id: SectionId) => void; isAdmin: boolean }) {
   return (
     <nav className="space-y-0.5">
-      {NAV.map((item) => (
+      {NAV.filter((item) => !item.adminOnly || isAdmin).map((item) => (
         <button
           key={item.id}
           onClick={() => onSelect(item.id)}
@@ -119,6 +186,7 @@ function NavList({ active, onSelect }: { active: SectionId; onSelect: (id: Secti
         >
           <span className={active === item.id ? 'text-emerald-600' : ''}>{item.icon}</span>
           <span className="flex-1 text-left">{item.label}</span>
+          {item.adminOnly && <Badge variant="outline" className="text-[9px] uppercase">Admin</Badge>}
           <span className="text-[10px] text-muted-foreground/70 font-mono">{item.layer}</span>
           {active === item.id && <ChevronRight className="h-3.5 w-3.5 text-emerald-600" />}
         </button>
@@ -152,6 +220,7 @@ function ActiveSection({ id }: { id: SectionId }) {
         {id === 'reputation' && <ReputationSection />}
         {id === 'chat' && <LiveChatSection />}
         {id === 'architecture' && <ArchitectureSection />}
+        {id === 'admin' && <AdminSection />}
       </motion.div>
     </AnimatePresence>
   )
@@ -160,6 +229,16 @@ function ActiveSection({ id }: { id: SectionId }) {
 function Dashboard() {
   const [active, setActive] = React.useState<SectionId>('overview')
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const [authOpen, setAuthOpen] = React.useState(false)
+  const { me, refresh, status, loadingMe } = useCurrentUser()
+  const isAdmin = me?.accountStatus === 'admin'
+
+  // If admin section becomes hidden (e.g., after sign-out), snap back to overview
+  React.useEffect(() => {
+    if (active === 'admin' && !loadingMe && !isAdmin) {
+      setActive('overview')
+    }
+  }, [active, isAdmin, loadingMe])
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -178,6 +257,7 @@ function Dashboard() {
               <div className="mb-4"><BrandMark /></div>
               <NavList
                 active={active}
+                isAdmin={isAdmin}
                 onSelect={(id) => { setActive(id); setMobileOpen(false) }}
               />
             </SheetContent>
@@ -195,6 +275,7 @@ function Dashboard() {
             <BookOpen className="h-4 w-4 mr-2" /> Docs
           </Button>
           <ThemeToggle />
+          <UserMenu onOpenAuth={() => setAuthOpen(true)} />
         </div>
       </header>
 
@@ -203,7 +284,7 @@ function Dashboard() {
         {/* Desktop nav rail */}
         <aside className="hidden md:flex w-64 shrink-0 flex-col border-r bg-background/60">
           <div className="sticky top-14 max-h-[calc(100vh-3.5rem)] overflow-y-auto p-3">
-            <NavList active={active} onSelect={setActive} />
+            <NavList active={active} isAdmin={isAdmin} onSelect={setActive} />
             <div className="mt-4 rounded-lg border bg-muted/40 p-3 text-[10px] text-muted-foreground">
               <div className="flex items-center gap-1.5 mb-1 font-medium text-foreground">
                 <Database className="h-3 w-3" /> Multi-tenant
@@ -236,6 +317,8 @@ function Dashboard() {
           </div>
         </div>
       </footer>
+
+      <AuthModal open={authOpen} onOpenChange={setAuthOpen} onAuthenticated={refresh} />
     </div>
   )
 }

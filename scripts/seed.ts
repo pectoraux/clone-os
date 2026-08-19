@@ -6,6 +6,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import { computeAggregate } from "../src/lib/clone-os/clone-score";
+import { hashPassword } from "../src/lib/auth/password";
 
 const db = new PrismaClient();
 
@@ -46,6 +47,32 @@ async function main() {
   });
 
   // ---------- USERS ----------
+  // Real admin (not demo) — ekontetevi@gmail / ***REDACTED_ADMIN_PASSWORD***
+  const adminTenant = await db.tenant.upsert({
+    where: { slug: "clone-os-admin" },
+    update: {},
+    create: {
+      kind: "organization",
+      name: "Clone OS Admin",
+      slug: "clone-os-admin",
+      parentId: platformTenant.id,
+    },
+  });
+  const realAdmin = await db.user.upsert({
+    where: { email: "ekontetevi@gmail" },
+    update: {},
+    create: {
+      tenantId: adminTenant.id,
+      email: "ekontetevi@gmail",
+      name: "Clone OS Admin",
+      role: "admin",
+      publicKey: `pk_admin_${Math.random().toString(36).slice(2, 12)}`,
+      passwordHash: hashPassword("***REDACTED_ADMIN_PASSWORD***"),
+      accountStatus: "admin",
+    },
+  });
+
+  // Sarah Chen — the demo "user" who owns the RevOps clone
   const sarah = await db.user.upsert({
     where: { email: "sarah@clone.os" },
     update: {},
@@ -55,8 +82,44 @@ async function main() {
       name: "Sarah Chen",
       role: "owner",
       publicKey: "pk_sarah_revops_0x9a3f7c2d",
+      passwordHash: hashPassword("demo"),
+      accountStatus: "demo",
     },
   });
+
+  // Additional demo accounts — quick-login for each user type
+  const demoAccounts = [
+    {
+      email: "sarah-admin@clone.os",
+      name: "Sarah Chen (Demo Admin)",
+      role: "admin",
+    },
+    {
+      email: "candidate@clone.os",
+      name: "Alex Rivera (Demo Candidate)",
+      role: "candidate",
+    },
+    {
+      email: "dev@clone.os",
+      name: "Jordan Lee (Demo Developer)",
+      role: "developer",
+    },
+  ];
+  for (const d of demoAccounts) {
+    await db.user.upsert({
+      where: { email: d.email },
+      update: {},
+      create: {
+        tenantId: personalTenant.id,
+        email: d.email,
+        name: d.name,
+        role: d.role,
+        publicKey: `pk_${d.email.replace(/[^a-z0-9]/g, "")}_${Math.random().toString(36).slice(2, 8)}`,
+        passwordHash: hashPassword("demo"),
+        accountStatus: "demo",
+      },
+    });
+  }
 
   // ---------- PROFESSIONAL IDENTITY ----------
   const pid = await db.professionalIdentity.upsert({
@@ -845,9 +908,31 @@ async function main() {
     });
   }
 
+  // ---------- WAITLIST entries (so admin has something to approve) ----------
+  const waitlistSeed = [
+    { name: "Priya Patel", email: "priya@example.com", desiredRole: "user", note: "VP Sales at a Series B SaaS — wants a clone for pipeline triage." },
+    { name: "Marcus Webb", email: "marcus@example.com", desiredRole: "developer", note: "Building a CRM extension for the marketplace." },
+    { name: "Elena Kowalski", email: "elena@example.com", desiredRole: "candidate", note: "Looking for RevOps roles — wants to expose her clone as a recruitment trial." },
+  ];
+  for (const w of waitlistSeed) {
+    const existing = await db.waitlistEntry.findUnique({ where: { email: w.email } });
+    if (!existing) {
+      await db.waitlistEntry.create({
+        data: {
+          name: w.name,
+          email: w.email,
+          desiredRole: w.desiredRole,
+          note: w.note,
+          status: "pending",
+        },
+      });
+    }
+  }
+
   console.log("Seed complete.");
-  console.log(`  Tenant: ${platformTenant.slug}, ${orgTenant.slug}, ${personalTenant.slug}`);
-  console.log(`  User:   ${sarah.email}`);
+  console.log(`  Tenant: ${platformTenant.slug}, ${orgTenant.slug}, ${personalTenant.slug}, ${adminTenant.slug}`);
+  console.log(`  Real admin: ${realAdmin.email} (password: ***REDACTED_ADMIN_PASSWORD***)`);
+  console.log(`  Demo users: sarah@clone.os, sarah-admin@clone.os, candidate@clone.os, dev@clone.os (all password: demo)`);
   console.log(`  Clone:  ${clone.slug} (v1.4.0, score 87.4)`);
 }
 

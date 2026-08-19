@@ -31,6 +31,7 @@ import {
 } from '../shared/ui'
 import { useCloneOs, useTrainSession, useMarketplaceMatch, useExtensionInstall } from '../data'
 import type { CloneOsState } from '../data'
+import { AdminWaitlistPanel, useCurrentUser } from '../auth/auth-ui'
 
 // =========================================================================
 // 1. OVERVIEW
@@ -992,14 +993,18 @@ export function LiveChatSection() {
 
   // Connect once we have clone.id
   React.useEffect(() => {
-    console.log('[LiveChat] effect fired, clone.id =', data?.clone?.id, 'socket =', socket ? 'exists' : 'null')
     if (!data?.clone?.id) return
     if (socket) return
-    console.log('[LiveChat] creating socket.io connection to /?XTransformPort=3003')
-    const s = io('/?XTransformPort=3003', { transports: ['websocket', 'polling'], reconnection: true })
+    // On Vercel (or anywhere NEXT_PUBLIC_SOCKET_URL is set), connect directly to
+    // the deployed socket.io service. On Space-z.ai (where Caddy is the gateway
+    // and the mini-service is on port 3003), use the XTransformPort query form.
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || ''
+    const socketOpts = { transports: ['websocket', 'polling'] as const, reconnection: true }
+    const s = socketUrl
+      ? io(socketUrl, socketOpts)
+      : io('/?XTransformPort=3003', socketOpts)
     setSocket(s)
     s.on('connect', () => {
-      console.log('[LiveChat] socket connected, joining clone', data.clone.id)
       s.emit('clone:join', { cloneId: data.clone.id })
     })
     s.on('connect_error', (e: any) => console.error('[LiveChat] connect_error', e?.message, e))
@@ -1282,5 +1287,35 @@ function ErrorState({ message }: { message: string }) {
         {message}
       </CardContent>
     </Card>
+  )
+}
+
+// =========================================================================
+// 16. ADMIN — Waitlist management (admin-only)
+// =========================================================================
+export function AdminSection() {
+  const { me, waitlist, refresh, loadingMe } = useCurrentUser()
+
+  if (loadingMe) return <Skeleton count={1} />
+  if (!me || me.accountStatus !== 'admin') {
+    return (
+      <SectionShell title="Admin" description="Waitlist management is only available to admins.">
+        <Callout tone="rose" title="Forbidden">
+          You must be signed in as an admin to view this section.
+        </Callout>
+      </SectionShell>
+    )
+  }
+  return (
+    <SectionShell
+      title="Admin — Waitlist"
+      description="New signups land on the waitlist. Approve an entry to create a real User with a temporary password — share it with the user; they can change it after signing in."
+      right={<Badge variant="outline" className="bg-emerald-100 text-emerald-800">{waitlist.length} pending</Badge>}
+    >
+      <Callout tone="emerald" title="You are signed in as the real admin">
+        {me.email} · role: {me.role} · accountStatus: {me.accountStatus}
+      </Callout>
+      <AdminWaitlistPanel entries={waitlist} onApproved={refresh} />
+    </SectionShell>
   )
 }

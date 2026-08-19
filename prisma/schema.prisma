@@ -16,8 +16,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ============================================================
@@ -54,8 +55,16 @@ model User {
   tenant          Tenant   @relation(fields: [tenantId], references: [id])
   email           String   @unique
   name            String
-  role            String   @default("owner") // owner | admin | member | developer
+  role            String   @default("owner") // owner | admin | member | developer | candidate
   publicKey       String?  // portable cryptographic identity (ADR-0017)
+  // Auth fields (NextAuth credentials provider)
+  passwordHash    String?  // null for waitlisted users who haven't been approved
+  accountStatus   String   @default("approved") // waitlist | approved | demo | admin | suspended
+  waitlistNote    String?  // why the user is interested (set during signup)
+  waitlistedAt    DateTime?
+  approvedAt      DateTime?
+  approvedBy      String?  // admin user id who approved
+  image           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -66,6 +75,60 @@ model User {
   evaluations         Evaluation[]   @relation("ReviewerEvaluations")
   agentDeployments    AgentDeployment[]
   releases            CloneVersion[]
+  accounts            Account[]
+  sessions            Session[]
+  waitlistApproved    WaitlistEntry[] @relation("ApproverOfWaitlist")
+}
+
+// Waitlist entries — users who signed up and are awaiting admin approval
+model WaitlistEntry {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  desiredRole  String   @default("user") // user | candidate | developer | admin
+  note         String?  // why interested
+  status       String   @default("pending") // pending | approved | rejected
+  requestedAt  DateTime @default(now())
+  decidedAt    DateTime?
+  decidedBy    String?  // admin user id
+  approver     User?    @relation("ApproverOfWaitlist", fields: [decidedBy], references: [id])
+  createdUserId String? // the user id created when approved
+}
+
+// NextAuth standard models (credentials provider — we use the User table above
+// for password storage, but keep Account/Session/VerificationToken for future
+// OAuth providers and email flows).
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+  createdAt    DateTime @default(now())
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+  @@unique([identifier, token])
 }
 
 model ProfessionalIdentity {

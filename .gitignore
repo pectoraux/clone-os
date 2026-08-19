@@ -1,54 +1,64 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
 
-# dependencies
-node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Next.js
+.next/
+out/
+build/
+dist/
 
-# testing
-/coverage
+# Vercel
+.vercel/
 
-# next.js
-/.next/
-/out/
+# Prisma
+prisma/migrations/
 
-# production
-/build
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
 
-# misc
+# Database
+*.db
+*.db-journal
+db/
+
+# Logs
+*.log
+dev.log
+server.log
+service.log
+watchdog.log
+
+# Runtime
 .DS_Store
 *.pem
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# env files (can opt-in for committing if needed)
-.env*
+# Tooling / scratchpads (Z.ai Code local)
+tool-results/
+upload/
+download/
+skills/
+.zscripts/
+tests/
+examples/
 
-# vercel
-.vercel
+# Mini-service
+mini-services/clone-chat-service/node_modules/
+mini-services/clone-chat-service/.env
+mini-services/clone-chat-service/*.log
 
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-local-*
-.claude
-.z-ai-config
-*.log
-dev.log
-dev.out.log
-test
-prompt
-
-server.log
-# Skills directory
-/skills/
+# Cache
+.cache/
+.turbo/
+.eslintcache
