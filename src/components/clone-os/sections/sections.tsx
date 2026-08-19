@@ -29,7 +29,7 @@ import {
   Bar, Callout, CapabilityBadge, CertBadge, KV, PanelCard, ScrollList, SectionShell,
   SensitivityBadge, StatCard, StatusBadge, Tag, money, timeAgo,
 } from '../shared/ui'
-import { useCloneOs, useTrainSession, useMarketplaceMatch, useExtensionInstall } from '../data'
+import { useCloneOs, useTrainSession, useMarketplaceMatch, useExtensionInstall, useLearn, useCandidates, useConfirmCandidate, usePersistCandidates, useReleaseCandidate } from '../data'
 import type { CloneOsState } from '../data'
 import { AdminWaitlistPanel, useCurrentUser } from '../auth/auth-ui'
 
@@ -150,7 +150,12 @@ export function OverviewSection() {
                     <div className="text-xs text-emerald-700 mt-1">+{v.performanceImpact.toFixed(1)} pts vs prev</div>
                   )}
                   <ul className="text-xs mt-1 space-y-0.5">
-                    {v.changeSet?.slice(0, 2).map((c: string, i: number) => <li key={i} className="text-muted-foreground">• {c}</li>)}
+                    {/* changeSet can be an array of strings (seeded versions) or an object {summary, artifacts} (N1.1 learned versions) */}
+                    {Array.isArray(v.changeSet)
+                      ? v.changeSet.slice(0, 2).map((c: string, i: number) => <li key={i} className="text-muted-foreground">• {c}</li>)
+                      : v.changeSet?.summary
+                        ? <li className="text-muted-foreground">• {v.changeSet.summary}</li>
+                        : null}
                   </ul>
                 </div>
               </div>
@@ -297,11 +302,18 @@ export function ExpertiseGraphSection() {
 export function TrainingStudioSection() {
   const { data, isLoading, error } = useCloneOs()
   const train = useTrainSession()
+  const learn = useLearn()
+  const candidatesQ = useCandidates(data?.clone?.id)
+  const confirmMut = useConfirmCandidate()
+  const persistMut = usePersistCandidates()
+  const releaseMut = useReleaseCandidate()
   const [mode, setMode] = React.useState<string>('teaching')
   const [input, setInput] = React.useState('')
+  const [teachText, setTeachText] = React.useState('')
   if (isLoading) return <Skeleton count={2} />
   if (error || !data) return <ErrorState message="Failed to load training data" />
   const { clone, catalogs, trainingSessions } = data
+  const candidatesData = candidatesQ.data
 
   async function run() {
     const t = toast.loading(`Running ${mode} training session…`)
@@ -313,7 +325,7 @@ export function TrainingStudioSection() {
       })
       toast.success(`Training complete · ${mode} → ${res.session.stage}`, {
         id: t,
-        description: `Events emitted: ${res.events.join(', ')} · New aggregate: ${res.newAggregate.toFixed(1)}%`,
+        description: res.simulated ? 'Prototype training adapter (simulated) — see HARDENING.md (N0.7)' : undefined,
       })
       setInput('')
     } catch (e: any) {
@@ -321,14 +333,216 @@ export function TrainingStudioSection() {
     }
   }
 
+  // N1.1 — Teach the clone (real learning pipeline)
+  async function teach() {
+    if (!teachText.trim()) return
+    const t = toast.loading('Capturing learning event + extracting candidates…')
+    try {
+      const res = await learn.mutateAsync({
+        cloneId: clone.id,
+        interactionText: teachText.trim(),
+        mode: 'teach',
+      })
+      if (res.candidates.length === 0) {
+        toast.info('No learnable artifacts detected', {
+          id: t,
+          description: res.note || 'Try teaching a specific procedure, rule, or preference.',
+        })
+      } else {
+        toast.success(`${res.candidates.length} candidate artifact(s) extracted`, {
+          id: t,
+          description: 'Review each candidate below — approve, edit, or reject.',
+        })
+      }
+      setTeachText('')
+    } catch (e: any) {
+      toast.error('Learning failed', { id: t, description: e?.message })
+    }
+  }
+
+  // N1.1 — Confirm a candidate (approve/edit/reject/merge)
+  async function confirm(candidateId: string, decision: 'approve' | 'edit' | 'reject' | 'merge' | 'ignore', editedContent?: string) {
+    const t = toast.loading(`${decision}ing candidate…`)
+    try {
+      await confirmMut.mutateAsync({ candidateId, decision, editedContent })
+      toast.success(`Candidate ${decision}d`, { id: t })
+    } catch (e: any) {
+      toast.error('Confirmation failed', { id: t, description: e?.message })
+    }
+  }
+
+  // N1.1 — Persist approved candidates + create CloneVersionCandidate
+  async function persist(learningEventId: string) {
+    const t = toast.loading('Persisting approved artifacts + creating candidate version…')
+    try {
+      const res = await persistMut.mutateAsync({ learningEventId })
+      toast.success('Candidate version created', {
+        id: t,
+        description: 'Click "Release" to make it production — the clone will change behavior.',
+      })
+    } catch (e: any) {
+      toast.error('Persist failed', { id: t, description: e?.message })
+    }
+  }
+
+  // N1.1 — Release the candidate version (creates a new CloneVersion)
+  async function release(candidateId: string, version: string) {
+    const t = toast.loading(`Releasing v${version}…`)
+    try {
+      const res = await releaseMut.mutateAsync({ candidateId })
+      toast.success(`Clone released as v${res.version}`, {
+        id: t,
+        description: 'Open a NEW chat to verify the clone\'s behavior changed.',
+      })
+    } catch (e: any) {
+      toast.error('Release failed', { id: t, description: e?.message })
+    }
+  }
+
   return (
     <SectionShell
       title="Training Studio"
-      description="Training ≠ fine-tuning. Multiple model-independent mechanisms: teaching, demonstration, correction, shadowing, assisted, delegated, simulation, adversarial, real-world feedback."
+      description="N1.1: Teach your clone — the interaction is captured as a LearningEvent, the LLM extracts candidate artifacts, provenance is classified at extraction time, and you confirm before the clone's state changes. No model fine-tuning."
       right={StatusBadge({ status: 'training' }) as any}
     >
+      {/* N1.1 — The real learning entry point */}
+      <PanelCard title="Teach your clone (N1.1 Real Learning Pipeline)" description="Type something you want the clone to learn. The system extracts candidate artifacts (procedures, rules, preferences, policies) with provenance classification + conflict detection. You confirm before anything changes.">
+        <Textarea
+          value={teachText}
+          onChange={(e) => setTeachText(e.target.value)}
+          placeholder="e.g., When reviewing pipeline, stage aging matters more than raw pipeline coverage. I inspect stage aging first, then deal concentration, then rep-level slippage."
+          className="min-h-24 text-sm"
+        />
+        <Button onClick={teach} disabled={learn.isPending || !teachText.trim()} className="mt-2 bg-emerald-600 hover:bg-emerald-700">
+          {learn.isPending ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+          {learn.isPending ? 'Extracting candidates…' : 'Teach & extract candidates'}
+        </Button>
+      </PanelCard>
+
+      {/* N1.1 — Candidate review (approve/edit/reject/merge) */}
+      {candidatesData?.learningEvents?.length > 0 && (
+        <PanelCard title="Pending candidates — review required" description="The system never auto-mutates the durable professional self from LLM inference alone. Approve, edit, or reject each candidate before persisting.">
+          <div className="space-y-3">
+            {candidatesData.learningEvents.map((e: any) => {
+              const allDecided = e.candidates.length > 0 && e.candidates.every((c: any) => c.confirmationState !== 'pending')
+              const hasApproved = e.candidates.some((c: any) => c.confirmationState === 'approved' || c.confirmationState === 'edited')
+              return (
+                <Card key={e.id}>
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-[10px] capitalize">{e.mode}</Badge>
+                      <SensitivityBadge sensitivity={e.provenanceKind === 'company_proprietary' ? 'confidential' : e.provenanceKind === 'client_data' ? 'restricted' : 'internal'} />
+                      <span className="text-xs text-muted-foreground ml-auto">{timeAgo(e.createdAt)}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground italic border-l-2 border-border pl-2">{e.rawInteraction.slice(0, 150)}{e.rawInteraction.length > 150 ? '…' : ''}</div>
+                    {e.candidates.length === 0 ? (
+                      <div className="text-xs text-muted-foreground">No candidates extracted.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {e.candidates.map((c: any) => (
+                          <div key={c.id} className={`rounded border p-2.5 space-y-1.5 ${c.confirmationState !== 'pending' ? 'opacity-60' : ''}`}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="outline" className="text-[10px] capitalize">{c.artifactType.replace(/_/g, ' ')}</Badge>
+                              <span className="text-xs font-medium">{c.name}</span>
+                              <Badge variant="outline" className="text-[10px] ml-auto">{Math.round(c.confidence * 100)}% confidence</Badge>
+                            </div>
+                            <div className="text-xs">{c.content}</div>
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <Badge variant="outline" className="text-[9px]">{c.provenanceKind.replace(/_/g, ' ')}</Badge>
+                              <SensitivityBadge sensitivity={c.provenanceSensitivity} />
+                              {c.hasConflict && (
+                                <Badge variant="outline" className="text-[9px] bg-amber-100 text-amber-800">
+                                  ⚠ Conflicts: {c.conflictingArtifactName}
+                                </Badge>
+                              )}
+                              {c.confirmationState !== 'pending' && (
+                                <Badge variant="outline" className={`text-[9px] ${c.confirmationState === 'approved' || c.confirmationState === 'edited' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                  {c.confirmationState}
+                                </Badge>
+                              )}
+                            </div>
+                            {c.confirmationState === 'pending' && (
+                              <div className="flex gap-1.5 pt-1">
+                                <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={() => confirm(c.id, 'approve')}>
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />Approve
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                                  const edited = prompt('Edit the candidate content:', c.content)
+                                  if (edited !== null && edited !== c.content) confirm(c.id, 'edit', edited)
+                                  else if (edited === c.content) confirm(c.id, 'approve')
+                                }}>
+                                  ✎ Edit
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 text-xs text-rose-700" onClick={() => confirm(c.id, 'reject')}>
+                                  ✕ Reject
+                                </Button>
+                                {c.hasConflict && (
+                                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => confirm(c.id, 'merge')}>
+                                    ↔ Merge
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {hasApproved && allDecided && (
+                      <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={() => persist(e.id)}>
+                        <GitBranch className="h-3 w-3 mr-1" />
+                        Persist approved + create candidate version
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </PanelCard>
+      )}
+
+      {/* N1.1 — CloneVersionCandidates awaiting release */}
+      {candidatesData?.versionCandidates?.length > 0 && (
+        <PanelCard title="Candidate versions — awaiting release" description="Approved artifacts have been persisted and a CloneVersionCandidate has been created. Release to make it production — this is the ONLY way the clone's active version changes.">
+          <div className="space-y-2">
+            {candidatesData.versionCandidates.map((c: any) => (
+              <Card key={c.id}>
+                <CardContent className="p-3 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="font-mono text-xs">v{c.candidateVersion}</Badge>
+                    <StatusBadge status={c.status} />
+                    <span className="text-xs text-muted-foreground ml-auto">{timeAgo(c.createdAt)}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{c.changeSet?.summary}</div>
+                  {c.changeSet?.artifacts?.length > 0 && (
+                    <div className="space-y-0.5">
+                      {c.changeSet.artifacts.map((a: any, i: number) => (
+                        <div key={i} className="text-xs flex gap-1">
+                          <Badge variant="outline" className="text-[9px]">{a.type}</Badge>
+                          <span>{a.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Provenance impact:</span>
+                    {Object.entries(c.provenanceImpact || {}).map(([k, v]: [string, any]) => (
+                      <Badge key={k} variant="outline" className="text-[9px]">{k}: {v}</Badge>
+                    ))}
+                  </div>
+                  <Button size="sm" className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={() => release(c.id, c.candidateVersion)}>
+                    <GitBranch className="h-3 w-3 mr-1" />Release v{c.candidateVersion}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </PanelCard>
+      )}
+
+      {/* Existing: simulated training modes (N0.7 — prototype adapter) */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <PanelCard title="Training modes" description="Pick a mode and run a session. The system ingests inputs into the clone's persisted state — not the LLM's weights." className="lg:col-span-2">
+        <PanelCard title="Simulated training modes (prototype)" description="These are PROTOTYPE training modes — see HARDENING.md (N0.7). They record sessions + emit events but do not change the clone. Use 'Teach your clone' above for real learning." className="lg:col-span-2">
           <div className="grid gap-2 sm:grid-cols-2">
             {catalogs.trainingModes.map((m: any) => (
               <button
@@ -351,9 +565,9 @@ export function TrainingStudioSection() {
               placeholder={`Optional input for ${mode} session…`}
               className="min-h-20 text-sm"
             />
-            <Button onClick={run} disabled={train.isPending} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button onClick={run} disabled={train.isPending} variant="outline" className="text-xs">
               {train.isPending ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              Run {mode} session
+              Run {mode} session (simulated)
             </Button>
           </div>
         </PanelCard>
@@ -507,7 +721,14 @@ export function VersionsSection() {
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Change set</div>
                   <ul className="text-xs space-y-0.5">
-                    {v.changeSet?.map((c: string, i: number) => <li key={i}>• {c}</li>)}
+                    {Array.isArray(v.changeSet)
+                      ? v.changeSet.map((c: string, i: number) => <li key={i}>• {c}</li>)
+                      : v.changeSet?.summary
+                        ? <>
+                            <li>• {v.changeSet.summary}</li>
+                            {v.changeSet.artifacts?.map((a: any, i: number) => <li key={i} className="text-muted-foreground">  ↳ [{a.type}] {a.name}</li>)}
+                          </>
+                        : null}
                   </ul>
                 </div>
                 <div>

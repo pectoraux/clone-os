@@ -1,8 +1,8 @@
 # Clone OS — Foundation Hardening Status
 
-**Milestone: N0 — Structurally Complete, Operationally Incomplete**
+**Milestone: N1.1 — Persistent Learning & Candidate Clone State (OPERATIONAL)**
 
-The foundations exist. The stubs are intentional. The project has crossed the boundary from "architecture represented in database + UI" to "architecture represented in database + explicit runtime contracts." But several runtimes remain non-operational (see the status table below). This document is the source of truth for "what is real vs. what is a representation."
+N0 is structurally complete with intentionally incomplete runtimes. N1.1 makes the first real product loop operational: a human teaching interaction produces a provenance-aware candidate artifact, the user confirms it, a versioned candidate clone state is created, and—after release—the clone's behavior genuinely changes in subsequent executions. This is the moment the architecture becomes real.
 
 The frozen architecture (see `docs/ARCHITECTURE.md` and `docs/adr/README.md`) describes the target. This document describes the current state of the implementation against that target.
 
@@ -100,16 +100,20 @@ The frozen architecture (see `docs/ARCHITECTURE.md` and `docs/adr/README.md`) de
 
 ---
 
-## N0.7 — Real Learning Pipeline
+## N0.7 → N1.1 — Real Learning Pipeline (OPERATIONAL)
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| `LearningPipeline` interface | 🚧 | `src/lib/learning/pipeline.ts` — `capture()`, `extract()`, `requestConfirmation()`, `confirm()`, `persist()`. Stub throws `NOT_IMPLEMENTED`. |
-| `LearningEvent` type | ✅ | Typed: kind, rawInteraction, candidateArtifact, confirmation, persistedArtifactId, evaluationId, provenance. |
-| Training endpoint | 🟡 | `/api/clone-os/train` is a **PROTOTYPE ADAPTER / SIMULATED TRAINING BACKEND**. It records a `TrainingSession` + emits domain events + creates an audit log entry, but the "output" is canned (`simulatedOutput(mode)`). The response explicitly says `simulated: true` and points to this document. |
-| Direct `clone.aggregateScore` mutation | ✅ | Removed. Training no longer mutates the production clone. The aggregate is recomputed only when a new `CloneVersion` is released (after evaluation gates the release — see N0.9). |
-| Real capture from chat/demonstration | 🔴 | Not implemented. The chat service records messages in-memory but does NOT extract candidate knowledge/procedures/preferences or persist them as learning artifacts. |
-| Human confirmation workflow | 🔴 | Not implemented. |
+| `LearningPipeline` | ✅ | `src/lib/learning/pipeline.ts` — **OPERATIONAL**. `capture()` records a LearningEvent with provenance classified at capture time. `extract()` uses the ModelProvider SPI (via ModelRouter → ZAIProvider) to extract candidate artifacts. `confirm()` handles approve/edit/reject/merge. `persist()` writes confirmed artifacts to Knowledge/Workflow/Policy/Memory tables + creates a CloneVersionCandidate. `release()` creates a new CloneVersion + updates Clone.currentVersionId. |
+| `LearningEvent` model | ✅ | Prisma model: actorId, mode, rawInteraction, provenanceKind, confidence, confirmationState, candidateVersionId. |
+| `CandidateArtifact` model | ✅ | Prisma model: artifactType, name, content, confidence, provenanceKind/Sensitivity/Portability, conflictsWithArtifactId, confirmationState, persistedArtifactType/Id, extractionModel/Latency. |
+| Provenance classification at extraction time | ✅ | `src/lib/learning/provenance-classifier.ts` — classifies USER_GENERAL vs COMPANY_PROPRIETARY vs CLIENT_DATA vs PUBLIC etc. during extraction, NOT deferred to export. Keyword heuristics override the LLM's classification when specific patterns appear (e.g., mentions of a company's proprietary formula). |
+| Conflict detection | ✅ | `src/lib/learning/conflict-detector.ts` — detects when a new candidate supersedes/conflicts with an existing artifact (keyword overlap). The UI shows "⚠ Conflicts: {name}" and offers Merge as an option. |
+| Human confirmation workflow | ✅ | The system never auto-mutates the durable professional self from LLM inference alone. Approve / Edit / Reject / Merge / Ignore are all real actions. The confirm endpoint requires authentication + tenant scoping. |
+| `CloneVersionCandidate` model | ✅ | Prisma model: baseVersionId, candidateVersion, status (draft→evaluating→pending_approval→approved/rejected→released), changeSet, learningEventIds, artifactIds, evaluationResults, scoreDelta, provenanceImpact, createdBy, approvedBy, releasedVersionId. |
+| Versioned candidate → release flow | ✅ | `persist()` creates a CloneVersionCandidate from approved artifacts. `release()` creates a new CloneVersion + updates Clone.currentVersionId + emits CloneVersionReleased domain event. Production is never silently mutated — the ONLY way the active version changes is through release. |
+| Old simulated training endpoint | 🟡 | `/api/clone-os/train` remains as a PROTOTYPE ADAPTER (clearly marked simulated:true in the response). It records sessions + emits events but does not change the clone. Use `/api/clone-os/learn` for real learning. |
+| Acceptance test | ✅ | Verified: Sarah teaches "stage aging matters more than raw pipeline coverage" → LearningEvent captured → LLM extracts "Pipeline Review Priority Order" (decision_pattern, 95% confidence, user_general provenance) → Sarah approves → persisted as Workflow → CloneVersionCandidate v1.5.0 → released → new chat: clone references "stage aging first, then deal concentration, then rep-level slippage" — the exact procedure Sarah taught. **The clone's behavior genuinely changed.** |
 
 ---
 

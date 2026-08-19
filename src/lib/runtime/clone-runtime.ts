@@ -13,7 +13,7 @@
 // typed and centralized). Future runtimes can produce a different surface
 // (e.g., a structured tool-call context) without changing the call sites.
 
-import type { Clone, CloneVersion, ProfessionalIdentity, Skill, Knowledge, Memory, Policy, User } from '@prisma/client'
+import type { Clone, CloneVersion, ProfessionalIdentity, Skill, Knowledge, Memory, Policy, Workflow, User } from '@prisma/client'
 
 export interface CloneRuntimeInput {
   clone: Clone & {
@@ -23,6 +23,7 @@ export interface CloneRuntimeInput {
     knowledgeItems?: Knowledge[]
     memories?: Memory[]
     policies?: Policy[]
+    workflows?: Workflow[]
   }
   // Optional agent + environment context (for runtime deployments)
   agentId?: string
@@ -56,6 +57,7 @@ export interface ExecutionContext {
   knowledge: { title: string; content: string; kind: string; sourceKind: string; sensitivity: string; portability: string }[]
   memories: { kind: string; content: string; importance: number }[]
   policies: { name: string; description: string; rule: any; appliesTo: string }[]
+  workflows: { name: string; description: string; steps: string[]; version: string }[]
   // Runtime
   agentId?: string
   environmentId?: string
@@ -116,6 +118,12 @@ export class CloneRuntime {
         rule: safeParse(p.ruleJson),
         appliesTo: p.appliesTo,
       })),
+      workflows: (clone.workflows ?? []).map((w) => ({
+        name: w.name,
+        description: w.description,
+        steps: safeParseArr(w.stepsJson),
+        version: w.version,
+      })),
       agentId: input.agentId,
       environmentId: input.environmentId,
       approvedCapabilities: input.approvedCapabilities ?? [],
@@ -158,6 +166,14 @@ export class CloneRuntime {
       parts.push('')
     }
     if (ctx.policies.length) { parts.push('# Policies (hard constraints)'); parts.push(ctx.policies.map((p) => `- ${p.name}`).join('\n')); parts.push('') }
+    // Procedures (workflows) — these are the clone's learned/taught procedures.
+    // This is how N1.1 learning changes behavior: a new procedure persisted here
+    // shows up in the next clone execution's system prompt.
+    if (ctx.workflows.length) {
+      parts.push('# Procedures (learned workflows — follow these when relevant)')
+      parts.push(ctx.workflows.map((w) => `- ${w.name}: ${w.description}${w.steps.length ? `\n  Steps: ${w.steps.join(' → ')}` : ''}`).join('\n'))
+      parts.push('')
+    }
     if (ctx.approvedCapabilities.length) {
       parts.push('# Approved capabilities')
       parts.push(ctx.approvedCapabilities.join(', '))

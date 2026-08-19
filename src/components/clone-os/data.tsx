@@ -175,3 +175,91 @@ export function useExtensionInstall() {
     },
   })
 }
+
+// N1.1 — Learning Pipeline hooks
+
+export function useLearn() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { cloneId: string; interactionText: string; mode?: string }) => {
+      const res = await fetch('/api/clone-os/learn', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(vars),
+      })
+      if (!res.ok) throw new Error(`Learn failed (${res.status})`)
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clone-os-candidates'] })
+    },
+  })
+}
+
+export function useCandidates(cloneId: string | undefined) {
+  return useQuery({
+    queryKey: ['clone-os-candidates', cloneId],
+    queryFn: async () => {
+      if (!cloneId) return null
+      const res = await fetch(`/api/clone-os/candidates?cloneId=${cloneId}`)
+      if (!res.ok) throw new Error(`Failed to load candidates (${res.status})`)
+      return res.json()
+    },
+    enabled: !!cloneId,
+  })
+}
+
+export function useConfirmCandidate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { candidateId: string; decision: 'approve' | 'edit' | 'reject' | 'merge' | 'ignore'; editedContent?: string }) => {
+      const res = await fetch(`/api/clone-os/candidates/${vars.candidateId}/confirm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision: vars.decision, editedContent: vars.editedContent }),
+      })
+      if (!res.ok) throw new Error(`Confirm failed (${res.status})`)
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clone-os-candidates'] })
+    },
+  })
+}
+
+export function usePersistCandidates() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { learningEventId: string }) => {
+      const res = await fetch('/api/clone-os/candidates/persist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(vars),
+      })
+      if (!res.ok) throw new Error(`Persist failed (${res.status})`)
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clone-os-candidates'] })
+      qc.invalidateQueries({ queryKey: ['clone-os'] })
+    },
+  })
+}
+
+export function useReleaseCandidate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { candidateId: string }) => {
+      const res = await fetch(`/api/clone-os/candidates/${vars.candidateId}/release`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      })
+      if (!res.ok) throw new Error(`Release failed (${res.status})`)
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clone-os-candidates'] })
+      qc.invalidateQueries({ queryKey: ['clone-os'] })
+    },
+  })
+}

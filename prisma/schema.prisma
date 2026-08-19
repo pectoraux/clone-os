@@ -71,6 +71,10 @@ model User {
   professionalIdentity ProfessionalIdentity?
   ownedClones         Clone[]
   trainingSessions    TrainingSession[]
+  learningEvents      LearningEvent[]      // N1.1: events this user's teaching produced
+  confirmedArtifacts  CandidateArtifact[] @relation("ConfirmerOfArtifacts") // N1.1
+  versionCandidates   CloneVersionCandidate[] @relation("CreatorOfCandidates") // N1.1
+  approvedCandidates  CloneVersionCandidate[] @relation("ApproverOfCandidates") // N1.1
   interventions       HumanIntervention[]
   evaluations         Evaluation[]   @relation("ReviewerEvaluations")
   agentDeployments    AgentDeployment[]
@@ -192,6 +196,9 @@ model Clone {
   workflows          Workflow[]
   policies           Policy[]
   trainingSessions   TrainingSession[]
+  learningEvents     LearningEvent[]
+  candidateArtifacts CandidateArtifact[]
+  versionCandidates  CloneVersionCandidate[]
   evaluations       Evaluation[]
   scores             CloneScore[]
   divergences       FidelityDivergence[]
@@ -383,6 +390,128 @@ model HumanIntervention {
   contextJson String
   resolution  String?
   createdAt   DateTime @default(now())
+}
+
+// ============================================================
+// N1.1 — Persistent Learning & Candidate Clone State
+// ============================================================
+
+// A LearningEvent is evidence from which the clone learns. Unlike a
+// TrainingSession (which is just a container for an interaction), a
+// LearningEvent carries candidate artifacts, provenance classification,
+// and confirmation state. It is the input to the versioned candidate flow.
+model LearningEvent {
+  id              String   @id @default(cuid())
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  tenantId        String
+  // The user who produced this learning interaction
+  actorId         String
+  actor           User     @relation(fields: [actorId], references: [id])
+  // What kind of interaction produced this evidence
+  mode            String   // teach | demonstrate | correct | shadow | assisted | delegated | simulation | adversarial | real_world
+  // The raw interaction (the actual text/transcript/actions)
+  rawInteraction  String   // the full text of the teaching/demonstration
+  interactionType String   @default("text") // text | transcript | actions | screen_recording | audio
+  // Context (what was the clone doing when this interaction happened?)
+  contextJson     String   // JSON: { source: "chat" | "training_studio" | "demonstration", sessionId?, ... }
+  // The candidate artifacts extracted from this event (by the LLM)
+  candidates      CandidateArtifact[]
+  // Provenance of the interaction itself (classified at capture time, not deferred)
+  provenanceKind  String   // user_general | company_proprietary | client_data | public | licensed | third_party | generated
+  // Overall confidence that this event contains learnable material
+  confidence      Float    @default(0)
+  // Confirmation state of the event as a whole
+  confirmationState String @default("pending") // pending | partially_confirmed | fully_confirmed | rejected
+  // Link to the CloneVersionCandidate that was created from this event (if any)
+  candidateVersionId String?
+  environmentId   String?
+  createdAt       DateTime @default(now())
+}
+
+// A CandidateArtifact is a single extracted professional artifact that
+// the clone could learn. It carries a type, content, confidence,
+// provenance, and confirmation state. After confirmation, it is persisted
+// to the appropriate clone table (Knowledge, Workflow, Policy, Memory)
+// and linked to a CloneVersionCandidate.
+model CandidateArtifact {
+  id              String   @id @default(cuid())
+  learningEventId String
+  learningEvent   LearningEvent @relation(fields: [learningEventId], references: [id], onDelete: Cascade)
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  tenantId        String
+  // What kind of artifact
+  artifactType    String   // procedure | rule | preference | policy | behavioral_pattern | decision_pattern | semantic_knowledge | episodic_memory
+  // The extracted content (concise, actionable)
+  content         String
+  name            String   // short name for UI display
+  // Extraction confidence (0..1)
+  confidence      Float
+  // Provenance classification (happens DURING extraction, not deferred)
+  provenanceKind  String   // user_general | company_proprietary | client_data | public | licensed | third_party | generated
+  provenanceSensitivity String @default("internal") // public | internal | confidential | restricted
+  provenancePortability String @default("portable") // portable | tenant_locked | client_locked
+  // Conflict detection: if this candidate appears to supersede/conflict with
+  // an existing artifact, record which one
+  conflictsWithArtifactId String? // ID of the existing artifact it conflicts with
+  conflictsWithArtifactName String? // name for UI display
+  conflictResolution String? // replace | coexist | reject | null (not yet resolved)
+  // Confirmation state
+  confirmationState String @default("pending") // pending | approved | rejected | edited | merged | ignored
+  confirmedById     String?
+  confirmedBy       User?    @relation("ConfirmerOfArtifacts", fields: [confirmedById], references: [id])
+  confirmedAt       DateTime?
+  // If the user edited the content before approving, store the original
+  originalContent   String?
+  // If approved, the persisted artifact (which table + which ID)
+  persistedArtifactType String? // knowledge | workflow | policy | memory
+  persistedArtifactId   String?
+  // Metadata
+  extractionModel     String? // which model provider was used for extraction
+  extractionLatencyMs Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// CloneVersionCandidate is the versioned candidate clone state. Training
+// produces a candidate; evaluation gates the release; approval creates a
+// new CloneVersion and updates Clone.currentVersionId. This is the
+// backbone of safe clone evolution — production is never silently mutated.
+model CloneVersionCandidate {
+  id              String   @id @default(cuid())
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  tenantId        String
+  // The version this candidate is based on
+  baseVersionId   String
+  // The proposed version number (e.g., "1.5.0")
+  candidateVersion String  // e.g. "1.5.0"
+  // Status of the candidate
+  status          String   @default("draft") // draft | evaluating | pending_approval | approved | rejected | released
+  // What changed (summary of the learning events + artifacts)
+  changeSetJson   String   // JSON: summary of changes
+  // Links to the learning events and confirmed artifacts that produced this candidate
+  learningEventIdsJson String  // JSON: array of LearningEvent IDs
+  artifactIdsJson      String  // JSON: array of CandidateArtifact IDs
+  // Evaluation results (stub for N1.1 — N1.2 will compute real deltas)
+  evaluationResultsJson String? // JSON: { scenarioId, cloneResponse, divergence, scoreDelta }
+  scoreDelta      Float?   // change in aggregate clone score (stub for N1.1)
+  // Provenance impact summary
+  provenanceImpactJson String? // JSON: { user_general: N, company_proprietary: N, ... }
+  // Lifecycle
+  createdBy       String
+  creator         User     @relation("CreatorOfCandidates", fields: [createdBy], references: [id])
+  approvedBy      String?
+  approver        User?    @relation("ApproverOfCandidates", fields: [approvedBy], references: [id])
+  approvedAt      DateTime?
+  rejectedBy      String?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  // When released, the new CloneVersion ID
+  releasedVersionId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // ============================================================

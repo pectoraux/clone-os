@@ -87,6 +87,10 @@ async function loadCloneContext(cloneId: string, principal: { tenantId: string |
       knowledgeItems: { take: 12, orderBy: { createdAt: "desc" } },
       memories: { take: 8, orderBy: { importance: "desc" } },
       policies: { take: 8 },
+      // N1.1: include workflows (procedures) — learned procedures change the
+      // clone's behavior. Without this, the new procedure Sarah taught
+      // wouldn't appear in the system prompt.
+      workflows: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!clone) return null;
