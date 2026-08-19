@@ -66,3 +66,4 @@ mini-services/clone-chat-service/*.log
 .turbo/
 .eslintcache
 .vercel
+worklog.md
