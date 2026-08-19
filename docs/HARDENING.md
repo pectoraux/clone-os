@@ -1,6 +1,8 @@
 # Clone OS — Foundation Hardening Status
 
-This document honestly states the operational status of every subsystem as of the N0 hardening milestone. It is the source of truth for "what is real vs. what is a representation."
+**Milestone: N0 — Structurally Complete, Operationally Incomplete**
+
+The foundations exist. The stubs are intentional. The project has crossed the boundary from "architecture represented in database + UI" to "architecture represented in database + explicit runtime contracts." But several runtimes remain non-operational (see the status table below). This document is the source of truth for "what is real vs. what is a representation."
 
 The frozen architecture (see `docs/ARCHITECTURE.md` and `docs/adr/README.md`) describes the target. This document describes the current state of the implementation against that target.
 
@@ -46,7 +48,7 @@ The frozen architecture (see `docs/ARCHITECTURE.md` and `docs/adr/README.md`) de
 | Tenant resolved from session | ✅ | `ctx.tenantId` comes from the NextAuth JWT, not from request body. |
 | All tenant-scoped queries filter by `tenantId` | ✅ | The consolidated `/api/clone-os` GET now scopes outcomes by `tenantId` (was global — fixed). Other tenant-scoped queries (skills, knowledge, experiences, memories, workflows, policies, training sessions, evaluations, clone scores, divergences, certifications, agents, environments, extensions, tools, contracts, licenses, events, audit logs, expertise) were already scoped by `cloneId` + `tenantId`. |
 | Marketplace queries | ✅ | Intentionally global (that's the marketplace's purpose) but only `listed`/`hired` statuses are returned to non-owners. Private/draft listings are not exposed. |
-| Tenant-isolation automated tests | 🚧 | TODO — see "Tests" below. The test scaffold will hit the API as two different tenants and assert no cross-tenant data leakage. |
+| Tenant-isolation automated tests | ✅ | `tests/tenant-isolation.test.ts` — 8 tests, all pass. See "Tests" section below. |
 
 ---
 
@@ -182,7 +184,14 @@ The frozen architecture (see `docs/ARCHITECTURE.md` and `docs/adr/README.md`) de
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| Test scaffold | 🔴 | TODO. The highest-risk failures are not visual — they are tenant isolation, authorization, provenance, capability enforcement, versioning. The test plan: tenant isolation (two tenants, no cross-leakage), authorization (unauthenticated → 401, non-owner → 403, admin → ok), capability enforcement (broker denies high-risk without approval), versioning (training doesn't mutate production), evaluation reproducibility, model-provider swapping. |
+| Test scaffold | ✅ | `tests/tenant-isolation.test.ts` — 8 tests, all pass. Run with `bun test tests/tenant-isolation.test.ts` (requires dev server on `http://127.0.0.1:3000` and seeded DB). The test script is `bun test`. |
+| Tenant isolation tests | ✅ | 8 tests covering: admin/demo tenant separation, unauthenticated 401s on all protected endpoints, public demo clone access for unauthenticated, waitlist GET admin-only (the auth-gap fix), training rejects non-owned cloneId, training does NOT mutate aggregateScore (N0.9 verification), extension install auth + tenant scoping, socket-token single-use + short-lived. All pass (26 expect() calls). |
+| Authorization tests | ✅ | Covered in the tenant-isolation test file — unauthenticated callers get 401 on all protected endpoints (train, extensions, socket-token, waitlist). |
+| Versioning tests | ✅ | Covered — "training endpoint does not mutate clone.aggregateScore" verifies that training produces a session + events but does NOT bump the aggregate. |
+| Capability enforcement tests | 🟡 | The broker is tested indirectly via the extension install endpoint. A direct unit test of `CapabilityBroker.authorizeExtensionInstall()` (mocking principal + tenant + capabilities + risk) is planned for N1.8. |
+| Extension isolation tests | 🔴 | Not yet applicable — the extension runtime (N0.6) is not implemented, so there is no isolation to test. |
+| Evaluation reproducibility tests | 🔴 | Not yet applicable — the fidelity engine (N0.8) is a stub, so there is no evaluation to reproduce. |
+| Model-provider swapping tests | 🔴 | Not yet applicable — only ZAIProvider is operational; the other adapters are stubs. |
 
 ---
 

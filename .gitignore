@@ -50,7 +50,10 @@ upload/
 download/
 skills/
 .zscripts/
-tests/
+# Only exclude the old Z.ai scaffold test scripts (*.sh), not our *.test.ts files
+tests/*.sh
+tests/python-runtime-*
+tests/database-runtime-*
 examples/
 
 # Mini-service
