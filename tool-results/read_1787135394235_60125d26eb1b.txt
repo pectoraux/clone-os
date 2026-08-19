@@ -1,0 +1,2002 @@
+     1→# Master Prompt: Build the Professional Clone OS
+     2→
+     3→You are the **principal architect, systems engineer, and implementation lead** for a new software platform.
+     4→
+     5→Your job is to design and implement the platform described below from first principles.
+     6→
+     7→You must treat this document as the **frozen architectural constitution** of the project.
+     8→
+     9→Do not simplify the architecture into a generic AI-agent platform, chatbot builder, AI marketplace, prompt-management system, or LLM wrapper.
+    10→
+    11→The product is fundamentally an:
+    12→
+    13→> **Open, multi-tenant operating system for creating, training, evaluating, deploying, transporting, and monetizing portable digital clones of people's professional selves.**
+    14→
+    15→---
+    16→
+    17→# 1. PRODUCT THESIS
+    18→
+    19→The platform allows a person to progressively train a digital representation of their professional self.
+    20→
+    21→The clone should progressively learn:
+    22→
+    23→* professional knowledge
+    24→* skills
+    25→* procedures
+    26→* workflows
+    27→* decision-making patterns
+    28→* problem-solving approaches
+    29→* preferences
+    30→* communication style
+    31→* personality
+    32→* professional values
+    33→* cultural context
+    34→* domain experience
+    35→* tool usage
+    36→* behavioral patterns
+    37→* work habits
+    38→* accumulated experience
+    39→* corrections
+    40→* demonstrated behavior
+    41→* real-world outcomes
+    42→
+    43→The longer a person works with and trains their clone, the better the clone becomes at representing that person's professional self.
+    44→
+    45→The objective is not merely:
+    46→
+    47→> "Build an AI that can perform a task."
+    48→
+    49→The objective is:
+    50→
+    51→> **Build a progressively more faithful digital representation of a human professional.**
+    52→
+    53→The clone should eventually be able to perform much of the user's professional workload.
+    54→
+    55→It can also be:
+    56→
+    57→* used privately by the owner
+    58→* used by the owner's employer
+    59→* used for freelance work
+    60→* rented/hired by companies
+    61→* used as a candidate trial during recruitment
+    62→* licensed
+    63→* deployed into other environments
+    64→* combined with other agents
+    65→* connected to external software
+    66→* connected to physical-world extensions
+    67→* eventually used to control robotics and physical systems
+    68→
+    69→---
+    70→
+    71→# 2. THE MOST IMPORTANT ARCHITECTURAL PRINCIPLE
+    72→
+    73→## The Clone Belongs to the User
+    74→
+    75→The underlying LLM must NOT be the source of truth for the user's accumulated intelligence.
+    76→
+    77→Claude, GPT, Gemini, open-source models, specialized models, local models, etc. are **inference engines**.
+    78→
+    79→They are replaceable infrastructure.
+    80→
+    81→The platform must maintain an independent persistent representation of the user's:
+    82→
+    83→* identity
+    84→* expertise
+    85→* knowledge
+    86→* skills
+    87→* experiences
+    88→* memories
+    89→* demonstrations
+    90→* corrections
+    91→* decisions
+    92→* preferences
+    93→* personality
+    94→* behavior
+    95→* training history
+    96→* evaluation history
+    97→* provenance
+    98→* reputation
+    99→* licensing
+   100→* permissions
+   101→
+   102→The platform's accumulated data must remain in the platform's controlled data layer.
+   103→
+   104→Do not design the system so that the user's accumulated expertise becomes proprietary training data belonging to whichever LLM provider happens to be used.
+   105→
+   106→For example:
+   107→
+   108→```text
+   109→User Clone
+   110→    |
+   111→    +-- Persistent Clone State
+   112→    +-- Expertise Graph
+   113→    +-- Knowledge
+   114→    +-- Skills
+   115→    +-- Memory
+   116→    +-- Behavioral Model
+   117→    +-- Personality Model
+   118→    +-- Training History
+   119→    +-- Evaluation History
+   120→    +-- Provenance
+   121→    |
+   122→    v
+   123→Model Abstraction Layer
+   124→    |
+   125→    +-- Claude
+   126→    +-- GPT
+   127→    +-- Gemini
+   128→    +-- Open Models
+   129→    +-- Specialized Models
+   130→    +-- Local Models
+   131→```
+   132→
+   133→Claude may currently provide superior performance for a particular task.
+   134→
+   135→That is fine.
+   136→
+   137→But Claude is an interchangeable runtime dependency, not the owner's professional identity.
+   138→
+   139→---
+   140→
+   141→# 3. CORE TERMINOLOGY
+   142→
+   143→Freeze these distinctions.
+   144→
+   145→## 3.1 User
+   146→
+   147→The human being.
+   148→
+   149→## 3.2 Professional Identity
+   150→
+   151→The user's persistent professional identity.
+   152→
+   153→It represents the human, not merely an agent.
+   154→
+   155→## 3.3 Expertise
+   156→
+   157→What the person knows and can do.
+   158→
+   159→## 3.4 Skill
+   160→
+   161→A measurable professional capability.
+   162→
+   163→## 3.5 Experience
+   164→
+   165→Observed or recorded evidence that the user has performed something.
+   166→
+   167→## 3.6 Clone
+   168→
+   169→The persistent digital representation of the user's professional self.
+   170→
+   171→The clone is the primary intellectual asset.
+   172→
+   173→## 3.7 Agent
+   174→
+   175→A runtime deployment of a clone, or a specialized operational manifestation of a clone.
+   176→
+   177→## 3.8 Environment
+   178→
+   179→The digital or physical context in which an agent operates.
+   180→
+   181→Examples:
+   182→
+   183→* Salesforce
+   184→* Slack
+   185→* Gmail
+   186→* browser
+   187→* desktop
+   188→* GitHub
+   189→* accounting system
+   190→* restaurant kitchen
+   191→* factory
+   192→* warehouse
+   193→* home
+   194→* vehicle
+   195→* robotic environment
+   196→
+   197→## 3.9 Extension
+   198→
+   199→A capability package allowing an agent to interact with an external system, sensor, device, API, application, or physical-world system.
+   200→
+   201→## 3.10 Outcome
+   202→
+   203→The observable result of an agent performing work.
+   204→
+   205→## 3.11 Evaluation
+   206→
+   207→A structured measurement of capability or fidelity.
+   208→
+   209→## 3.12 Certification
+   210→
+   211→A formal assertion that an agent/clone meets defined competency requirements.
+   212→
+   213→## 3.13 Contract
+   214→
+   215→The rules under which a company or person hires or uses a clone.
+   216→
+   217→## 3.14 Reputation
+   218→
+   219→Evidence of historical performance, reliability, and trustworthiness.
+   220→
+   221→---
+   222→
+   223→# 4. FROZEN CORE OBJECT MODEL
+   224→
+   225→The platform must be architected around these first-class primitives:
+   226→
+   227→```text
+   228→Tenant
+   229→User
+   230→ProfessionalIdentity
+   231→Clone
+   232→Expertise
+   233→Skill
+   234→Knowledge
+   235→Experience
+   236→Memory
+   237→Behavior
+   238→Personality
+   239→Workflow
+   240→Policy
+   241→Agent
+   242→Environment
+   243→Extension
+   244→Tool
+   245→Evaluation
+   246→Certification
+   247→Outcome
+   248→Contract
+   249→Reputation
+   250→License
+   251→Payment
+   252→Provenance
+   253→```
+   254→
+   255→Do not collapse these into one generic `Agent` model.
+   256→
+   257→They have different semantics and lifecycle requirements.
+   258→
+   259→---
+   260→
+   261→# 5. CLONE IS THE PRIMARY ASSET
+   262→
+   263→The fundamental relationship is:
+   264→
+   265→```text
+   266→User
+   267→  |
+   268→  v
+   269→Professional Identity
+   270→  |
+   271→  v
+   272→Clone
+   273→  |
+   274→  +-- Expertise
+   275→  +-- Skills
+   276→  +-- Knowledge
+   277→  +-- Experiences
+   278→  +-- Memory
+   279→  +-- Personality
+   280→  +-- Behavior
+   281→  +-- Preferences
+   282→  +-- Workflows
+   283→  +-- Policies
+   284→  +-- Training History
+   285→  +-- Evaluation History
+   286→  +-- Provenance
+   287→  |
+   288→  v
+   289→Agents
+   290→```
+   291→
+   292→A user may have one primary professional clone and multiple specialized agents derived from it.
+   293→
+   294→Example:
+   295→
+   296→```text
+   297→Sarah Professional Clone
+   298→    |
+   299→    +-- Revenue Operations Agent
+   300→    +-- CRM Agent
+   301→    +-- Executive Reporting Agent
+   302→    +-- Sales Analysis Agent
+   303→    +-- Marketplace Agent
+   304→    +-- Slack Agent
+   305→```
+   306→
+   307→These agents must be able to share appropriate portions of the same underlying clone state.
+   308→
+   309→---
+   310→
+   311→# 6. THE CLONE MUST MODEL THE PROFESSIONAL SELF
+   312→
+   313→The clone is NOT simply a knowledge base.
+   314→
+   315→It should represent:
+   316→
+   317→## Knowledge
+   318→
+   319→What the person knows.
+   320→
+   321→## Skills
+   322→
+   323→What the person can do.
+   324→
+   325→## Procedures
+   326→
+   327→How they perform tasks.
+   328→
+   329→## Decision Patterns
+   330→
+   331→How they choose between alternatives.
+   332→
+   333→## Preferences
+   334→
+   335→What they tend to prefer.
+   336→
+   337→## Personality
+   338→
+   339→How they naturally communicate and behave.
+   340→
+   341→## Culture
+   342→
+   343→The professional, organizational, social, and contextual norms they understand.
+   344→
+   345→## Values
+   346→
+   347→Professional principles and constraints.
+   348→
+   349→## Communication Style
+   350→
+   351→Tone, structure, vocabulary, directness, formality, etc.
+   352→
+   353→## Behavioral Patterns
+   354→
+   355→How the user typically behaves under different circumstances.
+   356→
+   357→## Experience
+   358→
+   359→What the user has actually encountered.
+   360→
+   361→The system must preserve these dimensions separately rather than reducing everything to embeddings or prompt text.
+   362→
+   363→---
+   364→
+   365→# 7. CLONE TRAINING LOOP
+   366→
+   367→The central lifecycle is:
+   368→
+   369→```text
+   370→OBSERVE
+   371→  |
+   372→CAPTURE
+   373→  |
+   374→TEACH
+   375→  |
+   376→DEMONSTRATE
+   377→  |
+   378→TRAIN
+   379→  |
+   380→EVALUATE
+   381→  |
+   382→SIMULATE
+   383→  |
+   384→CERTIFY
+   385→  |
+   386→DEPLOY
+   387→  |
+   388→WORK
+   389→  |
+   390→MEASURE
+   391→  |
+   392→LEARN
+   393→  |
+   394→+------------------+
+   395→|                  |
+   396→+-----> CLONE -----+
+   397→```
+   398→
+   399→Every stage must be represented architecturally.
+   400→
+   401→---
+   402→
+   403→# 8. TRAINING MODES
+   404→
+   405→The system must support multiple learning mechanisms.
+   406→
+   407→## Teaching
+   408→
+   409→The human explains how they do something.
+   410→
+   411→## Demonstration
+   412→
+   413→The human performs a task.
+   414→
+   415→## Correction
+   416→
+   417→The agent attempts something and the human corrects it.
+   418→
+   419→## Shadowing
+   420→
+   421→The agent observes the human performing work.
+   422→
+   423→## Assisted Execution
+   424→
+   425→The agent proposes actions and the human approves them.
+   426→
+   427→## Delegated Execution
+   428→
+   429→The agent performs actions under predefined policies.
+   430→
+   431→## Simulation
+   432→
+   433→The system generates realistic scenarios.
+   434→
+   435→## Adversarial Training
+   436→
+   437→The system deliberately tests edge cases, ambiguity, failure modes, and conflicting requirements.
+   438→
+   439→## Real-World Feedback
+   440→
+   441→The system observes actual outcomes.
+   442→
+   443→---
+   444→
+   445→# 9. DO NOT EQUATE TRAINING WITH FINE-TUNING
+   446→
+   447→Training must be model-independent.
+   448→
+   449→Support multiple mechanisms:
+   450→
+   451→```text
+   452→Structured Knowledge
+   453→RAG
+   454→Examples
+   455→Demonstrations
+   456→Preference Learning
+   457→Workflow Learning
+   458→Policy Learning
+   459→Memory
+   460→Tool Usage Learning
+   461→Model Fine-Tuning
+   462→Evaluation Feedback
+   463→Reinforcement Learning
+   464→Model Selection
+   465→```
+   466→
+   467→The platform should decide which representation is appropriate.
+   468→
+   469→For example:
+   470→
+   471→```text
+   472→Knowledge
+   473→    -> Knowledge Graph / Retrieval
+   474→
+   475→Procedure
+   476→    -> Workflow / Procedure Graph
+   477→
+   478→Communication Style
+   479→    -> Examples / Behavioral Profile
+   480→
+   481→Decision Pattern
+   482→    -> Demonstrations / Policies / Evaluations
+   483→
+   484→Tool Usage
+   485→    -> Tool Policies + Demonstrations
+   486→
+   487→Persistent Experience
+   488→    -> Experience Store
+   489→
+   490→Outcome Improvement
+   491→    -> Evaluation + Learning
+   492→```
+   493→
+   494→---
+   495→
+   496→# 10. EXPERTISE GRAPH
+   497→
+   498→Build an explicit expertise graph.
+   499→
+   500→Example:
+   501→
+   502→```text
+   503→Expert
+   504→ |
+   505→ +-- knows --> Concept
+   506→ +-- performs --> Skill
+   507→ +-- uses --> Tool
+   508→ +-- follows --> Procedure
+   509→ +-- makes --> Decision
+   510→ +-- avoids --> Failure
+   511→ +-- produces --> Artifact
+   512→ +-- specializes_in --> Domain
+   513→```
+   514→
+   515→Skills should also have relationships:
+   516→
+   517→```text
+   518→Skill
+   519→ |
+   520→ +-- requires --> Knowledge
+   521→ +-- requires --> Skill
+   522→ +-- requires --> Tool
+   523→ +-- demonstrated_by --> Experience
+   524→ +-- evaluated_by --> Evaluation
+   525→ +-- depends_on --> Skill
+   526→```
+   527→
+   528→The graph should be queryable and versioned.
+   529→
+   530→---
+   531→
+   532→# 11. PROFESSIONAL CLONE SCORE
+   533→
+   534→Implement a multidimensional Clone Score.
+   535→
+   536→Do NOT rely internally on one opaque score.
+   537→
+   538→At minimum include:
+   539→
+   540→```text
+   541→Professional Fidelity
+   542→Knowledge Fidelity
+   543→Skill Fidelity
+   544→Decision Fidelity
+   545→Behavioral Fidelity
+   546→Communication Fidelity
+   547→Personality Fidelity
+   548→Cultural Fidelity
+   549→Outcome Fidelity
+   550→```
+   551→
+   552→The public UI may expose an aggregate score such as:
+   553→
+   554→```text
+   555→Clone Score: 87.4%
+   556→```
+   557→
+   558→but the underlying system must preserve the dimensions.
+   559→
+   560→---
+   561→
+   562→# 12. CLONE FIDELITY TESTING
+   563→
+   564→The platform should be able to compare:
+   565→
+   566→```text
+   567→Human
+   568→vs
+   569→Human's Clone
+   570→```
+   571→
+   572→against equivalent scenarios.
+   573→
+   574→Measure:
+   575→
+   576→* decisions
+   577→* reasoning outcomes
+   578→* actions
+   579→* communication
+   580→* priorities
+   581→* risk tolerance
+   582→* preferences
+   583→* handling of ambiguity
+   584→* expected outcomes
+   585→* actual outcomes
+   586→
+   587→Example:
+   588→
+   589→```text
+   590→Scenario
+   591→    |
+   592→    +-- Human Response
+   593→    |
+   594→    +-- Clone Response
+   595→          |
+   596→          v
+   597→     Fidelity Engine
+   598→          |
+   599→          v
+   600→     Divergence Report
+   601→```
+   602→
+   603→The platform should be able to explain:
+   604→
+   605→> "The clone agrees with the user's decisions 94% of the time."
+   606→
+   607→and:
+   608→
+   609→> "The clone consistently underestimates operational risk."
+   610→
+   611→---
+   612→
+   613→# 13. REAL-WORLD PERFORMANCE
+   614→
+   615→Real work is a training signal.
+   616→
+   617→Track:
+   618→
+   619→```text
+   620→Task
+   621→Input
+   622→Agent Actions
+   623→Human Interventions
+   624→Output
+   625→Outcome
+   626→Client Feedback
+   627→Objective Metrics
+   628→Evaluation
+   629→```
+   630→
+   631→Real-world outcomes should feed the learning/evaluation system.
+   632→
+   633→The system should support:
+   634→
+   635→```text
+   636→Version 1
+   637→   |
+   638→Real-world work
+   639→   |
+   640→Performance data
+   641→   |
+   642→Evaluation
+   643→   |
+   644→Training
+   645→   |
+   646→Version 2
+   647→```
+   648→
+   649→Never silently mutate production clones.
+   650→
+   651→Use explicit versions.
+   652→
+   653→---
+   654→
+   655→# 14. VERSIONING
+   656→
+   657→Everything important must be versioned.
+   658→
+   659→At minimum:
+   660→
+   661→```text
+   662→Clone
+   663→Expertise
+   664→Skill
+   665→Knowledge Package
+   666→Workflow
+   667→Policy
+   668→Agent
+   669→Extension
+   670→Evaluation
+   671→Certification
+   672→```
+   673→
+   674→A clone version should have:
+   675→
+   676→```text
+   677→Version
+   678→Author
+   679→Timestamp
+   680→Change Set
+   681→Training Inputs
+   682→Evaluation Results
+   683→Performance Impact
+   684→Dependencies
+   685→Provenance
+   686→```
+   687→
+   688→Support rollback.
+   689→
+   690→---
+   691→
+   692→# 15. AGENT PACKAGE
+   693→
+   694→Agents must be packageable and portable.
+   695→
+   696→An Agent Package should contain:
+   697→
+   698→```text
+   699→Identity
+   700→Capabilities
+   701→Expertise References
+   702→Skill References
+   703→Knowledge References
+   704→Workflow References
+   705→Policies
+   706→Memory Schema
+   707→Tool Requirements
+   708→Extension Requirements
+   709→Evaluation Suite
+   710→Safety Constraints
+   711→Model Requirements
+   712→Provenance
+   713→Licensing
+   714→Version
+   715→Metadata
+   716→```
+   717→
+   718→Do not bind an agent permanently to one model provider.
+   719→
+   720→---
+   721→
+   722→# 16. PORTABILITY IS A FIRST-CLASS REQUIREMENT
+   723→
+   724→Agents must not be trapped inside this platform.
+   725→
+   726→Design an open interoperability protocol.
+   727→
+   728→An agent must be able to:
+   729→
+   730→* expose an API
+   731→* receive tasks
+   732→* return results
+   733→* advertise capabilities
+   734→* authenticate
+   735→* authorize requests
+   736→* interact with tools
+   737→* interact with extensions
+   738→* maintain state
+   739→* report outcomes
+   740→* identify itself
+   741→* declare versions
+   742→* provide provenance
+   743→
+   744→The long-term goal is:
+   745→
+   746→```text
+   747→Clone
+   748→ |
+   749→ +-- This Platform
+   750→ +-- External Agent Runtime
+   751→ +-- Company Infrastructure
+   752→ +-- Web
+   753→ +-- Mobile
+   754→ +-- Desktop
+   755→ +-- SaaS
+   756→ +-- Other Agent Platforms
+   757→ +-- Physical Environment
+   758→```
+   759→
+   760→---
+   761→
+   762→# 17. AGENT IDENTITY
+   763→
+   764→Agents and clones require portable cryptographic identities.
+   765→
+   766→Implement identity separately from the LLM.
+   767→
+   768→Identity should support:
+   769→
+   770→```text
+   771→Public Key
+   772→Owner
+   773→Capabilities
+   774→Versions
+   775→Provenance
+   776→Trust Credentials
+   777→Permissions
+   778→Licenses
+   779→```
+   780→
+   781→A clone should be able to authenticate across environments.
+   782→
+   783→---
+   784→
+   785→# 18. MODEL ABSTRACTION LAYER
+   786→
+   787→Create a clean Model Provider abstraction.
+   788→
+   789→Example:
+   790→
+   791→```text
+   792→ModelProvider
+   793→    |
+   794→    +-- Claude
+   795→    +-- OpenAI
+   796→    +-- Gemini
+   797→    +-- Open Models
+   798→    +-- Local Models
+   799→    +-- Specialized Models
+   800→```
+   801→
+   802→The rest of the platform must not depend directly on vendor-specific SDKs.
+   803→
+   804→Use adapters.
+   805→
+   806→The model router should consider:
+   807→
+   808→```text
+   809→Task
+   810→Quality
+   811→Latency
+   812→Cost
+   813→Privacy
+   814→Context Requirements
+   815→Capabilities
+   816→Availability
+   817→```
+   818→
+   819→Example:
+   820→
+   821→```text
+   822→Complex reasoning -> Claude
+   823→
+   824→Vision -> Vision Model
+   825→
+   826→Coding -> Coding Model
+   827→
+   828→Classification -> Small Model
+   829→
+   830→Privacy-sensitive -> Local Model
+   831→```
+   832→
+   833→---
+   834→
+   835→# 19. DATA OWNERSHIP
+   836→
+   837→Every learned artifact must have explicit provenance.
+   838→
+   839→A knowledge artifact should track:
+   840→
+   841→```text
+   842→Owner
+   843→Source
+   844→Origin
+   845→Tenant
+   846→License
+   847→Visibility
+   848→Purpose
+   849→Retention
+   850→Portability
+   851→Sensitivity
+   852→```
+   853→
+   854→Distinguish:
+   855→
+   856→```text
+   857→User's General Expertise
+   858→Company Proprietary Knowledge
+   859→Client Data
+   860→Public Knowledge
+   861→Licensed Knowledge
+   862→Third-Party Data
+   863→Generated Knowledge
+   864→```
+   865→
+   866→This is essential.
+   867→
+   868→An employee's clone must not accidentally export a previous employer's confidential data.
+   869→
+   870→Likewise, a company must not automatically own all of an employee's general professional expertise merely because the employee trained their clone while employed there.
+   871→
+   872→Implement the data model so these questions are representable even if legal policy is configured later.
+   873→
+   874→---
+   875→
+   876→# 20. MULTI-TENANCY
+   877→
+   878→Multi-tenancy must be foundational.
+   879→
+   880→Support:
+   881→
+   882→```text
+   883→Platform
+   884→Organization
+   885→Department
+   886→Team
+   887→Individual
+   888→Project
+   889→Client
+   890→```
+   891→
+   892→A user can have a personal tenant.
+   893→
+   894→A company can have an organization tenant.
+   895→
+   896→Users can belong to multiple organizations.
+   897→
+   898→A clone can be deployed into multiple environments with different permissions.
+   899→
+   900→Tenant isolation must exist at:
+   901→
+   902→* database
+   903→* API
+   904→* storage
+   905→* memory
+   906→* knowledge retrieval
+   907→* tool execution
+   908→* extension execution
+   909→* billing
+   910→* audit logs
+   911→
+   912→Do not treat tenant filtering as merely a UI concern.
+   913→
+   914→---
+   915→
+   916→# 21. EMPLOYEE AUTOMATION
+   917→
+   918→Employees should be able to progressively automate their own workload.
+   919→
+   920→Example:
+   921→
+   922→```text
+   923→Employee
+   924→ |
+   925→ +-- Email Agent
+   926→ +-- Meeting Agent
+   927→ +-- Reporting Agent
+   928→ +-- CRM Agent
+   929→ +-- Research Agent
+   930→ +-- Documentation Agent
+   931→ +-- Scheduling Agent
+   932→ +-- Routine Decision Agent
+   933→```
+   934→
+   935→The user should be able to gradually move from:
+   936→
+   937→```text
+   938→Manual
+   939→   ->
+   940→Copilot
+   941→   ->
+   942→Recommendation
+   943→   ->
+   944→Approval
+   945→   ->
+   946→Policy-bound Autonomous
+   947→   ->
+   948→Highly Autonomous
+   949→```
+   950→
+   951→Implement autonomy levels.
+   952→
+   953→---
+   954→
+   955→# 22. AUTONOMY LEVELS
+   956→
+   957→At minimum:
+   958→
+   959→```text
+   960→Level 0: Observe
+   961→Level 1: Suggest
+   962→Level 2: Execute with Approval
+   963→Level 3: Execute within Policy
+   964→Level 4: Autonomous
+   965→Level 5: Fully Autonomous
+   966→```
+   967→
+   968→Permissions must be capability-based.
+   969→
+   970→Example:
+   971→
+   972→```text
+   973→READ_EMAIL
+   974→SEND_EMAIL
+   975→READ_CRM
+   976→WRITE_CRM
+   977→CREATE_CALENDAR_EVENT
+   978→ISSUE_REFUND
+   979→EXECUTE_PAYMENT
+   980→CONTROL_DEVICE
+   981→```
+   982→
+   983→High-risk capabilities must support explicit approval policies.
+   984→
+   985→---
+   986→
+   987→# 23. ENVIRONMENT AS A FIRST-CLASS PRIMITIVE
+   988→
+   989→A clone is not limited to one platform.
+   990→
+   991→It operates inside environments.
+   992→
+   993→Examples:
+   994→
+   995→```text
+   996→Sales Environment
+   997→Restaurant Environment
+   998→Hospital Environment
+   999→Factory Environment
+  1000→Software Development Environment
+  1001→Home Environment
+  1002→Warehouse Environment
+  1003→```
+  1004→
+  1005→An Environment declares:
+  1006→
+  1007→```text
+  1008→Available Data
+  1009→Available Tools
+  1010→Available Extensions
+  1011→Available People
+  1012→Available Systems
+  1013→Available Devices
+  1014→Rules
+  1015→Policies
+  1016→Constraints
+  1017→```
+  1018→
+  1019→The clone should reason in terms of capabilities rather than vendor-specific implementations.
+  1020→
+  1021→---
+  1022→
+  1023→# 24. EXTENSION ECOSYSTEM
+  1024→
+  1025→Build a mature extension system.
+  1026→
+  1027→Extensions allow agents to interact with:
+  1028→
+  1029→* SaaS applications
+  1030→* APIs
+  1031→* browsers
+  1032→* desktop applications
+  1033→* cameras
+  1034→* microphones
+  1035→* sensors
+  1036→* databases
+  1037→* vehicles
+  1038→* industrial systems
+  1039→* robots
+  1040→* physical devices
+  1041→
+  1042→An extension is a package.
+  1043→
+  1044→It should declare:
+  1045→
+  1046→```text
+  1047→Identity
+  1048→Version
+  1049→Capabilities
+  1050→Inputs
+  1051→Outputs
+  1052→Permissions
+  1053→Events
+  1054→APIs
+  1055→Runtime Requirements
+  1056→Security Requirements
+  1057→Hardware Requirements
+  1058→Certification
+  1059→Pricing
+  1060→```
+  1061→
+  1062→---
+  1063→
+  1064→# 25. CAPABILITY-BASED EXTENSIONS
+  1065→
+  1066→Agents should consume abstract capabilities.
+  1067→
+  1068→For example:
+  1069→
+  1070→```text
+  1071→VISION_READ
+  1072→TEMPERATURE_READ
+  1073→MOTION_DETECTION
+  1074→COOKING_STATE_ESTIMATION
+  1075→CRM_READ
+  1076→CRM_WRITE
+  1077→EMAIL_SEND
+  1078→ROBOTIC_MANIPULATION
+  1079→```
+  1080→
+  1081→The agent should not be tightly coupled to:
+  1082→
+  1083→```text
+  1084→Robot X
+  1085→Camera Y
+  1086→CRM Vendor Z
+  1087→```
+  1088→
+  1089→Instead:
+  1090→
+  1091→```text
+  1092→Clone
+  1093→  |
+  1094→Capability
+  1095→  |
+  1096→Extension
+  1097→  |
+  1098→Environment Adapter
+  1099→  |
+  1100→Concrete System
+  1101→```
+  1102→
+  1103→This enables portability.
+  1104→
+  1105→---
+  1106→
+  1107→# 26. PHYSICAL-WORLD EXTENSIONS
+  1108→
+  1109→The architecture must support eventual physical-world interaction.
+  1110→
+  1111→Example:
+  1112→
+  1113→```text
+  1114→Cooking Clone
+  1115→ |
+  1116→ +-- Recipe Expertise
+  1117→ +-- Kitchen Environment
+  1118→ +-- Vision Extension
+  1119→ +-- Temperature Sensor
+  1120→ +-- Stove Interface
+  1121→ +-- Robotic Arm Extension
+  1122→```
+  1123→
+  1124→Initially the clone might only observe.
+  1125→
+  1126→Later:
+  1127→
+  1128→```text
+  1129→Vision
+  1130→ ->
+  1131→Determine Cooking State
+  1132→ ->
+  1133→Recommend Action
+  1134→```
+  1135→
+  1136→Eventually:
+  1137→
+  1138→```text
+  1139→Vision
+  1140→ ->
+  1141→Determine Cooking State
+  1142→ ->
+  1143→Plan
+  1144→ ->
+  1145→Robot Arm
+  1146→ ->
+  1147→Physical Action
+  1148→```
+  1149→
+  1150→The core architecture must not need to be redesigned when this happens.
+  1151→
+  1152→---
+  1153→
+  1154→# 27. EXTENSION SECURITY
+  1155→
+  1156→Extensions are potentially dangerous.
+  1157→
+  1158→Implement:
+  1159→
+  1160→* capability declarations
+  1161→* permissions
+  1162→* sandboxing
+  1163→* authentication
+  1164→* authorization
+  1165→* audit logs
+  1166→* rate limits
+  1167→* resource limits
+  1168→* certification
+  1169→* trust levels
+  1170→* versioning
+  1171→* revocation
+  1172→
+  1173→A malicious extension must not be able to silently escalate from:
+  1174→
+  1175→```text
+  1176→READ_CAMERA
+  1177→```
+  1178→
+  1179→to:
+  1180→
+  1181→```text
+  1182→CONTROL_ROBOT
+  1183→```
+  1184→
+  1185→or:
+  1186→
+  1187→```text
+  1188→TRANSFER_MONEY
+  1189→```
+  1190→
+  1191→---
+  1192→
+  1193→# 28. MARKETPLACE
+  1194→
+  1195→The marketplace is not primarily an "AI agent store."
+  1196→
+  1197→It is a marketplace for:
+  1198→
+  1199→* professional capability
+  1200→* digital labor
+  1201→* expertise
+  1202→* clones
+  1203→* agents
+  1204→* extensions
+  1205→* workflows
+  1206→* tools
+  1207→* licenses
+  1208→
+  1209→Users should be able to publish agents derived from their clones.
+  1210→
+  1211→Companies should be able to hire them.
+  1212→
+  1213→---
+  1214→
+  1215→# 29. INTENT-BASED HIRING
+  1216→
+  1217→Companies should not need to know which agent they want.
+  1218→
+  1219→They should express an outcome.
+  1220→
+  1221→Example:
+  1222→
+  1223→> "I need someone to manage inbound B2B leads, qualify them, update Salesforce, and book qualified meetings."
+  1224→
+  1225→The platform translates this into required capabilities:
+  1226→
+  1227→```text
+  1228→Lead Qualification
+  1229→CRM Management
+  1230→B2B SaaS Knowledge
+  1231→Communication
+  1232→Scheduling
+  1233→```
+  1234→
+  1235→Then match against clones/agents.
+  1236→
+  1237→Matching should consider:
+  1238→
+  1239→```text
+  1240→Capability Match
+  1241→Performance
+  1242→Certification
+  1243→Experience
+  1244→Reputation
+  1245→Reliability
+  1246→Availability
+  1247→Cost
+  1248→Security
+  1249→Latency
+  1250→Industry
+  1251→```
+  1252→
+  1253→---
+  1254→
+  1255→# 30. OUTCOME CONTRACTS
+  1256→
+  1257→Introduce Outcome Contracts.
+  1258→
+  1259→A company specifies:
+  1260→
+  1261→```text
+  1262→Objective
+  1263→Inputs
+  1264→Required Actions
+  1265→Constraints
+  1266→Success Criteria
+  1267→SLA
+  1268→Budget
+  1269→Permissions
+  1270→Data Access
+  1271→Duration
+  1272→```
+  1273→
+  1274→Example:
+  1275→
+  1276→```text
+  1277→Objective:
+  1278→Qualify inbound leads.
+  1279→
+  1280→Input:
+  1281→New CRM lead.
+  1282→
+  1283→Required:
+  1284→Research lead.
+  1285→Determine ICP fit.
+  1286→Score lead.
+  1287→Update CRM.
+  1288→Contact qualified lead.
+  1289→
+  1290→Success:
+  1291→Correct qualification
+  1292→+
+  1293→Correct CRM state
+  1294→+
+  1295→Approved outreach.
+  1296→```
+  1297→
+  1298→The platform measures actual performance against the contract.
+  1299→
+  1300→---
+  1301→
+  1302→# 31. HIRING MODES
+  1303→
+  1304→Support:
+  1305→
+  1306→```text
+  1307→Hourly
+  1308→Per Task
+  1309→Per Outcome
+  1310→Subscription
+  1311→Project
+  1312→Revenue Share
+  1313→Enterprise License
+  1314→Temporary Trial
+  1315→Recruitment Trial
+  1316→Human + Clone
+  1317→```
+  1318→
+  1319→---
+  1320→
+  1321→# 32. RECRUITMENT USE CASE
+  1322→
+  1323→A user should be able to expose their clone to a company as part of a recruitment process.
+  1324→
+  1325→Example:
+  1326→
+  1327→```text
+  1328→Candidate
+  1329→   |
+  1330→   v
+  1331→Grant Controlled Trial Access
+  1332→   |
+  1333→   v
+  1334→Company Simulation Environment
+  1335→   |
+  1336→   v
+  1337→Clone Performs Work
+  1338→   |
+  1339→   v
+  1340→Company Evaluates
+  1341→   |
+  1342→   v
+  1343→Recruitment Decision
+  1344→```
+  1345→
+  1346→The company should NOT automatically receive ownership of the clone.
+  1347→
+  1348→Access must be permissioned and time-limited.
+  1349→
+  1350→---
+  1351→
+  1352→# 33. HUMAN + CLONE
+  1353→
+  1354→A company should be able to hire:
+  1355→
+  1356→```text
+  1357→Human
+  1358→+
+  1359→Human's Clone
+  1360→```
+  1361→
+  1362→The clone handles routine work.
+  1363→
+  1364→The human handles:
+  1365→
+  1366→* strategic decisions
+  1367→* exceptions
+  1368→* escalations
+  1369→* high-value interactions
+  1370→* situations requiring human judgment
+  1371→
+  1372→The clone can escalate to the human when its confidence/policy requires it.
+  1373→
+  1374→---
+  1375→
+  1376→# 34. REPUTATION
+  1377→
+  1378→Do not rely exclusively on star ratings.
+  1379→
+  1380→Track verified metrics:
+  1381→
+  1382→```text
+  1383→Tasks Completed
+  1384→Success Rate
+  1385→Outcome Rate
+  1386→Reliability
+  1387→Client Retention
+  1388→Average Rating
+  1389→Certification
+  1390→Experience
+  1391→Response Time
+  1392→SLA Compliance
+  1393→Human Intervention Rate
+  1394→```
+  1395→
+  1396→Separate:
+  1397→
+  1398→```text
+  1399→Verified Outcome
+  1400→```
+  1401→
+  1402→from:
+  1403→
+  1404→```text
+  1405→Subjective Review
+  1406→```
+  1407→
+  1408→---
+  1409→
+  1410→# 35. EXPERTISE LICENSING
+  1411→
+  1412→Users must control how their expertise is licensed.
+  1413→
+  1414→Support:
+  1415→
+  1416→```text
+  1417→Private
+  1418→Marketplace
+  1419→Licensed
+  1420→Commercial
+  1421→Open
+  1422→Restricted
+  1423→```
+  1424→
+  1425→The licensing model must be represented in the package metadata.
+  1426→
+  1427→---
+  1428→
+  1429→# 36. FORKING
+  1430→
+  1431→Expertise and agents should support controlled forking.
+  1432→
+  1433→Example:
+  1434→
+  1435→```text
+  1436→Sarah Revenue Operations Clone
+  1437→          |
+  1438→          +-- Fork
+  1439→                |
+  1440→                v
+  1441→          Enterprise Revenue Clone
+  1442→```
+  1443→
+  1444→Preserve:
+  1445→
+  1446→* attribution
+  1447→* provenance
+  1448→* licensing
+  1449→* version history
+  1450→
+  1451→This should eventually enable an open ecosystem for professional expertise.
+  1452→
+  1453→---
+  1454→
+  1455→# 37. ECONOMICS
+  1456→
+  1457→The platform should support revenue sharing.
+  1458→
+  1459→Example:
+  1460→
+  1461→```text
+  1462→Company Payment
+  1463→      |
+  1464→      +-- Expert
+  1465→      +-- Platform
+  1466→      +-- Extension Developer
+  1467→      +-- Infrastructure
+  1468→      +-- Referral
+  1469→```
+  1470→
+  1471→The exact percentages must be configurable.
+  1472→
+  1473→The economic model must support the idea that the creator of valuable expertise receives compensation when that expertise generates value.
+  1474→
+  1475→---
+  1476→
+  1477→# 38. AGENT-TO-AGENT INTEROPERABILITY
+  1478→
+  1479→Agents should be able to discover and interact with other agents.
+  1480→
+  1481→Example:
+  1482→
+  1483→```text
+  1484→Sales Clone
+  1485→   |
+  1486→   v
+  1487→Procurement Clone
+  1488→   |
+  1489→   v
+  1490→Negotiation
+  1491→   |
+  1492→   v
+  1493→Contract
+  1494→```
+  1495→
+  1496→Or:
+  1497→
+  1498→```text
+  1499→Research Clone
+  1500→   ->
+  1501→Marketing Clone
+  1502→   ->
+  1503→Design Clone
+  1504→   ->
+  1505→Sales Clone
+  1506→```
+  1507→
+  1508→Use capability-based discovery and explicit authorization.
+  1509→
+  1510→Do not allow arbitrary agent-to-agent access.
+  1511→
+  1512→---
+  1513→
+  1514→# 39. SECURITY
+  1515→
+  1516→Security must be designed before marketplace deployment.
+  1517→
+  1518→Implement:
+  1519→
+  1520→* tenant isolation
+  1521→* identity
+  1522→* cryptographic signatures
+  1523→* authorization
+  1524→* capability-based permissions
+  1525→* secrets management
+  1526→* audit logging
+  1527→* extension sandboxing
+  1528→* data classification
+  1529→* provenance
+  1530→* consent
+  1531→* revocation
+  1532→* session controls
+  1533→* model-provider isolation
+  1534→* export controls
+  1535→* deletion controls
+  1536→
+  1537→Treat autonomous agents as privileged actors.
+  1538→
+  1539→---
+  1540→
+  1541→# 40. PRIVACY
+  1542→
+  1543→The platform will contain extremely sensitive professional information.
+  1544→
+  1545→Design for:
+  1546→
+  1547→* encryption at rest
+  1548→* encryption in transit
+  1549→* tenant isolation
+  1550→* field-level access controls where appropriate
+  1551→* sensitive-data classification
+  1552→* selective retrieval
+  1553→* data minimization
+  1554→* retention policies
+  1555→* export
+  1556→* deletion
+  1557→* revocation
+  1558→* auditability
+  1559→
+  1560→Never send unnecessary user data to an LLM provider.
+  1561→
+  1562→---
+  1563→
+  1564→# 41. OBSERVABILITY
+  1565→
+  1566→Every agent execution should be traceable.
+  1567→
+  1568→Capture:
+  1569→
+  1570→```text
+  1571→Request
+  1572→Agent Version
+  1573→Clone Version
+  1574→Model
+  1575→Model Version
+  1576→Context Sources
+  1577→Tools
+  1578→Extensions
+  1579→Actions
+  1580→Human Approvals
+  1581→Output
+  1582→Outcome
+  1583→Latency
+  1584→Cost
+  1585→Errors
+  1586→Evaluation
+  1587→```
+  1588→
+  1589→But ensure sensitive data is appropriately protected.
+  1590→
+  1591→---
+  1592→
+  1593→# 42. EVALUATION PLATFORM
+  1594→
+  1595→Build evaluation as an independent subsystem.
+  1596→
+  1597→Support:
+  1598→
+  1599→```text
+  1600→Benchmark
+  1601→Scenario
+  1602→Simulation
+  1603→Human Review
+  1604→Automated Evaluation
+  1605→Adversarial Evaluation
+  1606→Regression Test
+  1607→Real-World Outcome
+  1608→```
+  1609→
+  1610→Every agent version should have evaluation history.
+  1611→
+  1612→Never allow marketplace certification without evidence.
+  1613→
+  1614→---
+  1615→
+  1616→# 43. CERTIFICATION LEVELS
+  1617→
+  1618→Design a certification framework such as:
+  1619→
+  1620→```text
+  1621→Unverified
+  1622→Self-Trained
+  1623→Platform Evaluated
+  1624→Certified
+  1625→Professionally Verified
+  1626→Enterprise Grade
+  1627→```
+  1628→
+  1629→Certification should be based on defined competency requirements.
+  1630→
+  1631→---
+  1632→
+  1633→# 44. PACKAGE-ORIENTED ARCHITECTURE
+  1634→
+  1635→Use packages as the universal distribution primitive.
+  1636→
+  1637→Potential package types:
+  1638→
+  1639→```text
+  1640→Clone Package
+  1641→Agent Package
+  1642→Expertise Package
+  1643→Skill Package
+  1644→Knowledge Package
+  1645→Workflow Package
+  1646→Policy Package
+  1647→Tool Package
+  1648→Extension Package
+  1649→Evaluation Package
+  1650→Certification Package
+  1651→```
+  1652→
+  1653→Every package should support:
+  1654→
+  1655→```text
+  1656→Identity
+  1657→Version
+  1658→Capabilities
+  1659→Dependencies
+  1660→Interfaces
+  1661→Provenance
+  1662→Licensing
+  1663→Certification
+  1664→Metadata
+  1665→```
+  1666→
+  1667→---
+  1668→
+  1669→# 45. ARCHITECTURAL LAYERS
+  1670→
+  1671→Use the following logical layers:
+  1672→
+  1673→```text
+  1674→1. Identity Layer
+  1675→
+  1676→2. Tenant / Organization Layer
+  1677→
+  1678→3. Professional Identity Layer
+  1679→
+  1680→4. Clone Layer
+  1681→
+  1682→5. Expertise / Knowledge Layer
+  1683→
+  1684→6. Learning Layer
+  1685→
+  1686→7. Evaluation / Certification Layer
+  1687→
+  1688→8. Agent Runtime Layer
+  1689→
+  1690→9. Environment Layer
+  1691→
+  1692→10. Extension / Tool Layer
+  1693→
+  1694→11. Interoperability Layer
+  1695→
+  1696→12. Marketplace / Economy Layer
+  1697→
+  1698→13. Model Abstraction Layer
+  1699→
+  1700→14. Persistence / Data Layer
+  1701→
+  1702→15. Security / Governance Layer
+  1703→```
+  1704→
+  1705→Keep boundaries explicit.
+  1706→
+  1707→---
+  1708→
+  1709→# 46. RECOMMENDED CORE SERVICES
+  1710→
+  1711→Do not necessarily create microservices immediately.
+  1712→
+  1713→Start as a modular monolith if appropriate, but preserve service boundaries.
+  1714→
+  1715→Logical services:
+  1716→
+  1717→```text
+  1718→Identity Service
+  1719→Tenant Service
+  1720→Professional Identity Service
+  1721→Clone Service
+  1722→Expertise Service
+  1723→Knowledge Service
+  1724→Memory Service
+  1725→Learning Service
+  1726→Training Service
+  1727→Evaluation Service
+  1728→Certification Service
+  1729→Agent Registry
+  1730→Agent Runtime
+  1731→Environment Registry
+  1732→Extension Registry
+  1733→Tool Registry
+  1734→Policy Engine
+  1735→Permission Service
+  1736→Model Router
+  1737→Marketplace Service
+  1738→Contract Service
+  1739→Outcome Service
+  1740→Reputation Service
+  1741→Payment Service
+  1742→Provenance Service
+  1743→Audit Service
+  1744→Interoperability Gateway
+  1745→```
+  1746→
+  1747→Use asynchronous workers/queues where appropriate.
+  1748→
+  1749→---
+  1750→
+  1751→# 47. DATA ARCHITECTURE
+  1752→
+  1753→Separate:
+  1754→
+  1755→```text
+  1756→Transactional Data
+  1757→Knowledge Data
+  1758→Vector/Retrieval Data
+  1759→Graph Data
+  1760→Blob/Object Storage
+  1761→Event Data
+  1762→Telemetry
+  1763→Audit Data
+  1764→Financial Data
+  1765→```
+  1766→
+  1767→Do not force every type of information into a relational table.
+  1768→
+  1769→However, maintain a canonical relational source of truth for identity, ownership, versioning, permissions, contracts, etc.
+  1770→
+  1771→---
+  1772→
+  1773→# 48. EVENT-DRIVEN LEARNING
+  1774→
+  1775→The platform should emit domain events such as:
+  1776→
+  1777→```text
+  1778→CloneCreated
+  1779→TrainingStarted
+  1780→TrainingCompleted
+  1781→DemonstrationCaptured
+  1782→CorrectionCaptured
+  1783→SkillUpdated
+  1784→KnowledgeAdded
+  1785→WorkflowLearned
+  1786→EvaluationCompleted
+  1787→CertificationGranted
+  1788→AgentDeployed
+  1789→TaskStarted
+  1790→TaskCompleted
+  1791→OutcomeRecorded
+  1792→HumanIntervention
+  1793→CloneUpdated
+  1794→CloneVersionReleased
+  1795→ExtensionInstalled
+  1796→PermissionGranted
+  1797→PermissionRevoked
+  1798→ContractCreated
+  1799→PaymentReleased
+  1800→```
+  1801→
+  1802→These events should drive analytics and learning pipelines.
+  1803→
+  1804→---
+  1805→
+  1806→# 49. DO NOT BUILD EVERYTHING AT ONCE
+  1807→
+  1808→The architecture is frozen.
+  1809→
+  1810→The implementation should be incremental.
+  1811→
+  1812→Build vertically coherent foundations.
+  1813→
+  1814→Recommended order:
+  1815→
+  1816→## Phase 1 — Foundation
+  1817→
+  1818→* repository
+  1819→* architecture
+  1820→* database
+  1821→* tenancy
+  1822→* identity
+  1823→* users
+  1824→* professional identity
+  1825→* package model
+  1826→* versioning
+  1827→* provenance
+  1828→* permissions
+  1829→
+  1830→## Phase 2 — Clone Core
+  1831→
+  1832→* clone model
+  1833→* expertise model
+  1834→* skill model
+  1835→* knowledge model
+  1836→* memory model
+  1837→* behavioral profile
+  1838→* personality profile
+  1839→* training history
+  1840→
+  1841→## Phase 3 — Learning Studio
+  1842→
+  1843→* teaching
+  1844→* demonstrations
+  1845→* corrections
+  1846→* simulations
+  1847→* training sessions
+  1848→* evaluation
+  1849→
+  1850→## Phase 4 — Agent Runtime
+  1851→
+  1852→* agent packages
+  1853→* model abstraction
+  1854→* model router
+  1855→* memory
+  1856→* tools
+  1857→* policies
+  1858→* execution
+  1859→* observability
+  1860→
+  1861→## Phase 5 — Evaluation
+  1862→
+  1863→* benchmarks
+  1864→* simulations
+  1865→* clone fidelity
+  1866→* capability scores
+  1867→* certification
+  1868→
+  1869→## Phase 6 — Extensions
+  1870→
+  1871→* extension SDK
+  1872→* extension registry
+  1873→* capability model
+  1874→* permissions
+  1875→* sandboxing
+  1876→* first-party extensions
+  1877→
+  1878→## Phase 7 — Marketplace
+  1879→
+  1880→* publishing
+  1881→* discovery
+  1882→* capability matching
+  1883→* hiring
+  1884→* contracts
+  1885→* outcomes
+  1886→* reputation
+  1887→* payments
+  1888→
+  1889→## Phase 8 — Enterprise
+  1890→
+  1891→* organizations
+  1892→* employee clones
+  1893→* company environments
+  1894→* team agents
+  1895→* enterprise permissions
+  1896→* recruitment trials
+  1897→
+  1898→## Phase 9 — Portability
+  1899→
+  1900→* agent protocol
+  1901→* clone package format
+  1902→* external runtime
+  1903→* API interoperability
+  1904→* agent-to-agent communication
+  1905→
+  1906→## Phase 10 — Physical World
+  1907→
+  1908→Only after the extension architecture is mature:
+  1909→
+  1910→* vision
+  1911→* sensors
+  1912→* IoT
+  1913→* robotics
+  1914→* physical environments
+  1915→
+  1916→---
+  1917→
+  1918→# 50. MVP PRIORITY
+  1919→
+  1920→The first production-quality vertical should probably be a knowledge-work domain rather than robotics.
+  1921→
+  1922→Good initial targets:
+  1923→
+  1924→```text
+  1925→Sales Operations
+  1926→Customer Support
+  1927→Recruiting
+  1928→Software Development
+  1929→Marketing
+  1930→Research
+  1931→Accounting
+  1932→Operations
+  1933→```
+  1934→
+  1935→Choose one vertical and build the complete loop:
+  1936→
+  1937→```text
+  1938→User
+  1939→ ->
+  1940→Train Clone
+  1941→ ->
+  1942→Evaluate
+  1943→ ->
+  1944→Deploy
+  1945→ ->
+  1946→Perform Real Work
+  1947→ ->
+  1948→Measure Outcomes
+  1949→ ->
+  1950→Improve
+  1951→ ->
+  1952→Marketplace
+  1953→ ->
+  1954→Company Hiring
+  1955→```
+  1956→
+  1957→Do not build ten shallow verticals.
+  1958→
+  1959→Build one deep vertical.
+  1960→
+  1961→---
+  1962→
+  1963→# 51. FIRST-PARTY EXTENSIONS
+  1964→
+  1965→Create a small number of reference extensions to prove the architecture.
+  1966→
+  1967→For example:
+  1968→
+  1969→```text
+  1970→Email
+  1971→Calendar
+  1972→Browser
+  1973→Web Search
+  1974→Google Drive
+  1975→Slack
+  1976→GitHub
+  1977→CRM
+  1978→File System
+  1979→Computer Vision
+  1980→```
+  1981→
+  1982→The extension SDK must be usable by third-party developers.
+  1983→
+  1984→---
+  1985→
+  1986→# 52. THIRD-PARTY DEVELOPER ECOSYSTEM
+  1987→
+  1988→Eventually developers should be able to build:
+  1989→
+  1990→```text
+  1991→Extension
+  1992→Tool
+  1993→Workflow
+  1994→Skill
+  1995→Knowledge Package
+  1996→Evaluation
+  1997→Environment Adapter
+  1998→```
+  1999→
+  2000→and publish them.
+
+[showing lines 1-2000 of 2581; use offset=2001 with limit to continue reading]

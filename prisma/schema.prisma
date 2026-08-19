@@ -1,0 +1,656 @@
+// Clone OS — Prisma Schema
+// Frozen Core Object Model. See docs/ARCHITECTURE.md and docs/adr/README.md.
+//
+// Primitives (NOT collapsed into one Agent model):
+//   Tenant, User, ProfessionalIdentity, Clone, Expertise, Skill, Knowledge,
+//   Experience, Memory, Behavior, Personality, Workflow, Policy, Agent,
+//   Environment, Extension, Tool, Evaluation, Certification, Outcome,
+//   Contract, Reputation, License, Payment, Provenance.
+//
+// All ownership-scoped tables carry `tenantId` (ADR-0004).
+// All learned artifacts carry Provenance fields (ADR-0003).
+// Everything important is versioned (ADR-0010).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 1. IDENTITY & TENANCY LAYER
+// ============================================================
+
+model Tenant {
+  id          String   @id @default(cuid())
+  kind        String   // platform | organization | department | team | individual | project | client
+  name        String
+  slug        String   @unique
+  parentId    String?
+  parent      Tenant?  @relation("TenantHierarchy", fields: [parentId], references: [id])
+  children    Tenant[] @relation("TenantHierarchy")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users                  User[]
+  professionalIdentities ProfessionalIdentity[]
+  clones                 Clone[]
+  agents                 Agent[]
+  environments           Environment[]
+  extensions             Extension[]
+  tools                  Tool[]
+  marketplaceListings    MarketplaceListing[]
+  contracts              Contract[]
+  auditLogs              AuditLog[]
+  events                 DomainEvent[]
+}
+
+model User {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  email           String   @unique
+  name            String
+  role            String   @default("owner") // owner | admin | member | developer
+  publicKey       String?  // portable cryptographic identity (ADR-0017)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  professionalIdentity ProfessionalIdentity?
+  ownedClones         Clone[]
+  trainingSessions    TrainingSession[]
+  interventions       HumanIntervention[]
+  evaluations         Evaluation[]   @relation("ReviewerEvaluations")
+  agentDeployments    AgentDeployment[]
+  releases            CloneVersion[]
+}
+
+model ProfessionalIdentity {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  title       String   // e.g. "Senior RevOps Manager"
+  domain      String   // e.g. "Revenue Operations"
+  bio         String
+  valuesJson  String   // JSON: professional values array
+  cultureJson String   // JSON: cultural context notes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  clone       Clone?
+}
+
+// ============================================================
+// 2. CLONE LAYER (Primary Asset — ADR-0001)
+// ============================================================
+
+model Clone {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  tenant              Tenant   @relation(fields: [tenantId], references: [id])
+  ownerId             String
+  owner               User     @relation(fields: [ownerId], references: [id])
+  professionalIdentityId String? @unique
+  professionalIdentity     ProfessionalIdentity? @relation(fields: [professionalIdentityId], references: [id])
+
+  slug        String   @unique
+  name        String   // e.g. "Sarah — Revenue Operations Clone"
+  summary     String
+  domain      String
+  currentVersionId String? // pointer to active production version (never mutate in place — ADR-0010)
+  currentVersion    CloneVersion? @relation("CloneActiveVersion", fields: [currentVersionId], references: [id])
+  status      String   @default("training") // training | evaluating | certified | deployed | archived
+  visibility  String   @default("private") // private | marketplace | licensed | commercial | open | restricted (ADR-0035)
+  certificationLevel String @default("unverified") // unverified | self_trained | platform_evaluated | certified | professionally_verified | enterprise_grade
+
+  // Behavioral / Personality / Communication profile (persisted, model-independent)
+  personaJson         String   // JSON: communication style, tone, vocabulary, formality, directness
+  personalityJson     String   // JSON: personality model (Big Five-ish facets)
+  preferencesJson    String   // JSON: decision preferences, risk tolerance
+  behaviorJson        String   // JSON: behavioral patterns by circumstance
+
+  // Aggregate score cache (the dimensions live in CloneScore rows; this is a UI hint)
+  aggregateScore      Float?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions           CloneVersion[]
+  expertiseRecords   Expertise[]
+  skills             Skill[]
+  knowledgeItems     Knowledge[]
+  experiences        Experience[]
+  memories           Memory[]
+  workflows          Workflow[]
+  policies           Policy[]
+  trainingSessions   TrainingSession[]
+  evaluations       Evaluation[]
+  scores             CloneScore[]
+  divergences       FidelityDivergence[]
+  agents             Agent[]
+  marketplaceListings MarketplaceListing[]
+  contracts         Contract[]   @relation("CloneContracts")
+  auditLogs         AuditLog[]
+  events            DomainEvent[]
+}
+
+model CloneVersion {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  version     String   // semver-ish, e.g. "1.4.0"
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  releasedAt  DateTime @default(now())
+
+  changeSetJson     String  // JSON: change set summary
+  trainingInputsJson String // JSON: training inputs that produced this version
+  evaluationResultsJson String
+  performanceImpact Float?  // delta vs previous version
+  dependenciesJson  String  // JSON: package/extension/model dependencies
+  provenanceJson    String  // JSON: provenance (ADR-0003)
+
+  activeForClones Clone[] @relation("CloneActiveVersion")
+
+  // Rollback support (ADR-0010)
+  rolledBackFrom String?  // if this version was created by rollback, the version it rolled back to
+}
+
+// ============================================================
+// 3. EXPERTISE / KNOWLEDGE LAYER (ADR-0010 Expertise Graph)
+// ============================================================
+
+model Expertise {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  tenantId    String
+
+  // Graph node identity
+  nodeType    String   // concept | skill | tool | procedure | decision | failure | artifact | domain
+  name        String
+  description String?
+
+  // Provenance (ADR-0003)
+  sourceKind  String   // user_general | company_proprietary | client_data | public | licensed | third_party | generated
+  originTenantId String?
+  license     String?
+  visibility  String   @default("private")
+  sensitivity String   @default("internal") // public | internal | confidential | restricted
+  portability String   @default("portable")  // portable | tenant_locked | client_locked
+
+  // Edges (stored as JSON array of {type, targetId, targetName})
+  edgesJson   String
+
+  proficiency Float?  // 0..100 self-assessed proficiency for skills
+  certifiedBy String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Convenience model: Skill is a measurable capability with requirements & evaluations
+model Skill {
+  id              String   @id @default(cuid())
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  tenantId        String
+  name            String
+  description     String?
+  domain          String
+  proficiency     Float    @default(0) // 0..100
+  requiresJson    String   // JSON: required knowledge / skills / tools
+  demonstratedBy  String?  // link to Experience
+  evaluatedBy     String?  // link to Evaluation
+  certificationLevel String @default("unverified")
+  provenanceJson   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Knowledge {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  tenantId    String
+  title       String
+  content     String
+  kind        String   // fact | procedure | principle | heuristic | precedent | reference
+  tagsJson    String   // JSON array of tags
+  sourceKind  String   // ADR-0003 classification
+  originTenantId String?
+  license     String?
+  visibility  String   @default("private")
+  sensitivity String   @default("internal")
+  portability String   @default("portable")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Experience {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  tenantId    String
+  title       String
+  description String
+  occurredAt  DateTime
+  outcome     String   // success | partial | failure | neutral
+  lessonsJson String   // JSON: lessons learned
+  skillIdsJson String  // JSON: array of skill ids demonstrated
+  provenanceJson String
+  createdAt    DateTime @default(now())
+}
+
+model Memory {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  tenantId    String
+  kind        String   // episodic | semantic | procedural | preference | correction
+  content     String
+  importance  Float    @default(0.5) // 0..1
+  createdAt   DateTime @default(now())
+}
+
+model Workflow {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  tenantId    String
+  name        String
+  description String
+  stepsJson   String   // JSON: ordered steps
+  triggerKind String?  // event | schedule | manual | api
+  version     String   @default("1.0.0")
+  provenanceJson String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Policy {
+  id          String   @id @default(cuid())
+  cloneId     String?
+  clone       Clone?   @relation(fields: [cloneId], references: [id])
+  tenantId    String
+  name        String
+  description String
+  ruleJson    String   // JSON: structured rule
+  appliesTo   String   // agent | extension | environment | clone
+  version     String   @default("1.0.0")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============================================================
+// 4. LEARNING / TRAINING LAYER
+// ============================================================
+
+model TrainingSession {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  tenantId    String
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  mode        String   // teaching | demonstration | correction | shadowing | assisted | delegated | simulation | adversarial | real_world
+  stage       String   // observe | capture | teach | demonstrate | train | evaluate | simulate | certify | deploy | work | measure | learn
+  inputJson   String   // JSON: training input payload
+  outputJson  String?  // JSON: training output
+  skillsTouchedJson String
+  status      String   @default("completed") // pending | running | completed | failed
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  durationMs  Int?
+  notes       String?
+}
+
+model HumanIntervention {
+  id          String   @id @default(cuid())
+  cloneId     String
+  tenantId    String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  reason      String   // escalation | exception | approval | correction
+  contextJson String
+  resolution  String?
+  createdAt   DateTime @default(now())
+}
+
+// ============================================================
+// 5. EVALUATION / CERTIFICATION LAYER (ADR-0009)
+// ============================================================
+
+model Evaluation {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  tenantId    String
+  reviewerId  String?
+  reviewer    User?    @relation("ReviewerEvaluations", fields: [reviewerId], references: [id])
+  kind        String   // benchmark | scenario | simulation | human_review | automated | adversarial | regression | real_world
+  scenarioJson String
+  resultJson  String   // JSON: dimension -> score
+  overallScore Float?
+  evidenceUrl String?
+  createdAt   DateTime @default(now())
+}
+
+model CloneScore {
+  id                       String   @id @default(cuid())
+  cloneId                  String
+  clone                    Clone    @relation(fields: [cloneId], references: [id])
+  tenantId                 String
+  // Multidimensional fidelity (ADR-0011) — NEVER reduce internally to one opaque score
+  professionalFidelity     Float
+  knowledgeFidelity        Float
+  skillFidelity            Float
+  decisionFidelity         Float
+  behavioralFidelity      Float
+  communicationFidelity    Float
+  personalityFidelity      Float
+  culturalFidelity         Float
+  outcomeFidelity           Float
+  aggregate                Float  // UI hint only
+  computedAt               DateTime @default(now())
+  notes                    String?
+}
+
+model FidelityDivergence {
+  id          String   @id @default(cuid())
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  tenantId    String
+  scenarioId  String
+  scenario    String
+  humanResponseJson  String
+  cloneResponseJson  String
+  divergenceJson     String  // per-dimension deltas
+  agreementRate Float    // 0..1 — "clone agrees with user's decisions X% of the time"
+  headline     String   // e.g. "consistently underestimates operational risk"
+  createdAt    DateTime @default(now())
+}
+
+model Certification {
+  id              String   @id @default(cuid())
+  cloneId         String
+  tenantId        String
+  level           String   // unverified | self_trained | platform_evaluated | certified | professionally_verified | enterprise_grade
+  requirement     String
+  evidenceJson    String
+  grantedAt       DateTime @default(now())
+  grantedBy       String
+}
+
+// ============================================================
+// 6. AGENT RUNTIME LAYER
+// ============================================================
+
+model Agent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  cloneId     String
+  clone       Clone    @relation(fields: [cloneId], references: [id])
+  name        String
+  slug        String   @unique
+  description String
+  specialization String  // e.g. "Revenue Operations" | "CRM" | "Slack" | "Reporting"
+  packageManifestJson String  // ADR-0015 Agent Package
+  // Model requirements (not bound to one provider — ADR-0002)
+  modelRequirementsJson String
+  // Capability permissions (ADR-0008)
+  approvedCapabilitiesJson String
+  autonomyLevel Int     @default(1)  // 0..5
+  status       String   @default("drafted") // drafted | deployed | paused | retired
+  certificationLevel String @default("unverified")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  deployments  AgentDeployment[]
+  listings     MarketplaceListing[]
+}
+
+model AgentDeployment {
+  id          String   @id @default(cuid())
+  agentId     String
+  agent       Agent    @relation(fields: [agentId], references: [id])
+  tenantId    String
+  environmentId String?
+  environment Environment? @relation(fields: [environmentId], references: [id])
+  deployedById String
+  deployedBy  User     @relation(fields: [deployedById], references: [id])
+  autonomyLevel Int
+  approvedCapabilitiesJson String
+  status      String   @default("active") // active | paused | stopped
+  startedAt   DateTime @default(now())
+  stoppedAt   DateTime?
+  // Observability (ADR-0041)
+  lastExecutionJson String?
+}
+
+// ============================================================
+// 7. ENVIRONMENT LAYER (ADR-0012)
+// ============================================================
+
+model Environment {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  slug        String   @unique
+  kind        String   // sales | restaurant | hospital | factory | software_dev | home | warehouse | generic
+  description String
+  availableDataJson    String
+  availableToolsJson   String
+  availableExtensionsJson String
+  availablePeopleJson  String
+  availableSystemsJson String
+  availableDevicesJson String
+  rulesJson    String
+  policiesJson String
+  constraintsJson String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  deployments AgentDeployment[]
+}
+
+// ============================================================
+// 8. EXTENSION / TOOL LAYER (ADR-0007)
+// ============================================================
+
+model Extension {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  name         String
+  slug         String    @unique
+  version      String
+  description  String
+  capabilitiesJson String  // e.g. ["VISION_READ","CRM_READ","EMAIL_SEND"]
+  inputsJson   String
+  outputsJson  String
+  permissionsJson String
+  eventsJson   String
+  apisJson     String
+  runtimeRequirementsJson String
+  securityRequirementsJson String
+  hardwareRequirementsJson String
+  certification String   @default("unverified")
+  pricingJson   String
+  trustLevel    String   @default("community") // community | verified | first_party | enterprise
+  installed     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Tool {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  name         String
+  slug         String    @unique
+  description  String
+  capabilitiesJson String
+  interfaceJson String
+  version      String
+  provenanceJson String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ============================================================
+// 9. MARKETPLACE / ECONOMY LAYER (ADR-0011)
+// ============================================================
+
+model MarketplaceListing {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  packageType  String   // clone | agent | expertise | skill | knowledge | workflow | policy | tool | extension | evaluation | certification
+  name         String
+  description  String
+  cloneId      String?
+  clone        Clone?   @relation(fields: [cloneId], references: [id])
+  agentId      String?
+  agent        Agent?   @relation(fields: [agentId], references: [id])
+  capabilitiesJson String
+  certificationLevel String
+  reputationJson String
+  pricingMode  String   // hourly | per_task | per_outcome | subscription | project | revenue_share | enterprise_license | temporary_trial | recruitment_trial | human_plus_clone
+  priceCents   Int
+  publishedAt  DateTime @default(now())
+  status       String   @default("listed") // listed | hired | paused | retired
+}
+
+model Contract {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  cloneId      String?
+  clone        Clone?    @relation("CloneContracts", fields: [cloneId], references: [id])
+  agentId      String?
+  hiringMode   String
+  objective    String
+  inputsJson   String
+  requiredActionsJson String
+  constraintsJson String
+  successCriteriaJson String
+  slaJson      String
+  budgetCents  Int
+  permissionsJson String
+  dataAccessJson String
+  durationDays Int
+  status       String   @default("draft") // draft | active | completed | cancelled | breached
+  outcomes     Outcome[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Outcome {
+  id           String   @id @default(cuid())
+  contractId   String
+  contract     Contract @relation(fields: [contractId], references: [id])
+  cloneId      String?
+  tenantId     String
+  objectiveMet Boolean?
+  metricJson   String
+  clientFeedback String?
+  humanInterventionRate Float?
+  successRate  Float?
+  recordedAt   DateTime @default(now())
+}
+
+model Reputation {
+  id           String   @id @default(cuid())
+  cloneId      String   @unique
+  tenantId     String
+  tasksCompleted Int    @default(0)
+  successRate    Float  @default(0)
+  outcomeRate    Float  @default(0)
+  reliability    Float  @default(0)
+  clientRetention Float @default(0)
+  averageRating  Float  @default(0)
+  certificationsCount Int @default(0)
+  experienceYears Float  @default(0)
+  responseTimeMins Float @default(0)
+  slaCompliance  Float  @default(0)
+  humanInterventionRate Float @default(0)
+  // Verified outcome metrics separated from subjective review (ADR-0034)
+  subjectiveReviewsJson String
+  updatedAt    DateTime @updatedAt
+}
+
+model Payment {
+  id           String   @id @default(cuid())
+  contractId   String
+  tenantId     String
+  amountCents  Int
+  // Configurable revenue split (ADR-0037)
+  splitJson    String   // {expert, platform, extensionDeveloper, infrastructure, referral}
+  status       String   @default("pending") // pending | released | disputed | refunded
+  createdAt    DateTime @default(now())
+  releasedAt   DateTime?
+}
+
+model License {
+  id           String   @id @default(cuid())
+  cloneId      String?
+  tenantId     String
+  kind         String   // private | marketplace | licensed | commercial | open | restricted
+  termsJson    String
+  grantedAt    DateTime @default(now())
+  expiresAt    DateTime?
+}
+
+// ============================================================
+// 10. PROVENANCE / AUDIT / EVENTS / GOVERNANCE LAYER
+// ============================================================
+
+model Provenance {
+  id           String   @id @default(cuid())
+  tenantId     String
+  artifactType String   // clone | expertise | skill | knowledge | memory | workflow | policy | agent | extension | evaluation | certification | outcome | contract | payment
+  artifactId   String
+  owner        String
+  source       String
+  origin       String
+  license      String?
+  visibility   String   @default("private")
+  purpose      String?
+  retention    String?
+  portability  String   @default("portable")
+  sensitivity  String   @default("internal")
+  recordedAt   DateTime @default(now())
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  actorId      String?
+  cloneId      String?
+  clone        Clone?   @relation(fields: [cloneId], references: [id])
+  action       String
+  resourceType String
+  resourceId   String
+  detailsJson  String
+  createdAt    DateTime @default(now())
+}
+
+model DomainEvent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  cloneId      String?
+  clone        Clone?   @relation(fields: [cloneId], references: [id])
+  type         String   // CloneCreated | TrainingStarted | TrainingCompleted | DemonstrationCaptured | CorrectionCaptured | SkillUpdated | KnowledgeAdded | WorkflowLearned | EvaluationCompleted | CertificationGranted | AgentDeployed | TaskStarted | TaskCompleted | OutcomeRecorded | HumanIntervention | CloneUpdated | CloneVersionReleased | ExtensionInstalled | PermissionGranted | PermissionRevoked | ContractCreated | PaymentReleased
+  payloadJson  String
+  createdAt    DateTime @default(now())
+}

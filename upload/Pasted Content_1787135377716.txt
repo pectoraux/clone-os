@@ -1,0 +1,2580 @@
+# Master Prompt: Build the Professional Clone OS
+
+You are the **principal architect, systems engineer, and implementation lead** for a new software platform.
+
+Your job is to design and implement the platform described below from first principles.
+
+You must treat this document as the **frozen architectural constitution** of the project.
+
+Do not simplify the architecture into a generic AI-agent platform, chatbot builder, AI marketplace, prompt-management system, or LLM wrapper.
+
+The product is fundamentally an:
+
+> **Open, multi-tenant operating system for creating, training, evaluating, deploying, transporting, and monetizing portable digital clones of people's professional selves.**
+
+---
+
+# 1. PRODUCT THESIS
+
+The platform allows a person to progressively train a digital representation of their professional self.
+
+The clone should progressively learn:
+
+* professional knowledge
+* skills
+* procedures
+* workflows
+* decision-making patterns
+* problem-solving approaches
+* preferences
+* communication style
+* personality
+* professional values
+* cultural context
+* domain experience
+* tool usage
+* behavioral patterns
+* work habits
+* accumulated experience
+* corrections
+* demonstrated behavior
+* real-world outcomes
+
+The longer a person works with and trains their clone, the better the clone becomes at representing that person's professional self.
+
+The objective is not merely:
+
+> "Build an AI that can perform a task."
+
+The objective is:
+
+> **Build a progressively more faithful digital representation of a human professional.**
+
+The clone should eventually be able to perform much of the user's professional workload.
+
+It can also be:
+
+* used privately by the owner
+* used by the owner's employer
+* used for freelance work
+* rented/hired by companies
+* used as a candidate trial during recruitment
+* licensed
+* deployed into other environments
+* combined with other agents
+* connected to external software
+* connected to physical-world extensions
+* eventually used to control robotics and physical systems
+
+---
+
+# 2. THE MOST IMPORTANT ARCHITECTURAL PRINCIPLE
+
+## The Clone Belongs to the User
+
+The underlying LLM must NOT be the source of truth for the user's accumulated intelligence.
+
+Claude, GPT, Gemini, open-source models, specialized models, local models, etc. are **inference engines**.
+
+They are replaceable infrastructure.
+
+The platform must maintain an independent persistent representation of the user's:
+
+* identity
+* expertise
+* knowledge
+* skills
+* experiences
+* memories
+* demonstrations
+* corrections
+* decisions
+* preferences
+* personality
+* behavior
+* training history
+* evaluation history
+* provenance
+* reputation
+* licensing
+* permissions
+
+The platform's accumulated data must remain in the platform's controlled data layer.
+
+Do not design the system so that the user's accumulated expertise becomes proprietary training data belonging to whichever LLM provider happens to be used.
+
+For example:
+
+```text
+User Clone
+    |
+    +-- Persistent Clone State
+    +-- Expertise Graph
+    +-- Knowledge
+    +-- Skills
+    +-- Memory
+    +-- Behavioral Model
+    +-- Personality Model
+    +-- Training History
+    +-- Evaluation History
+    +-- Provenance
+    |
+    v
+Model Abstraction Layer
+    |
+    +-- Claude
+    +-- GPT
+    +-- Gemini
+    +-- Open Models
+    +-- Specialized Models
+    +-- Local Models
+```
+
+Claude may currently provide superior performance for a particular task.
+
+That is fine.
+
+But Claude is an interchangeable runtime dependency, not the owner's professional identity.
+
+---
+
+# 3. CORE TERMINOLOGY
+
+Freeze these distinctions.
+
+## 3.1 User
+
+The human being.
+
+## 3.2 Professional Identity
+
+The user's persistent professional identity.
+
+It represents the human, not merely an agent.
+
+## 3.3 Expertise
+
+What the person knows and can do.
+
+## 3.4 Skill
+
+A measurable professional capability.
+
+## 3.5 Experience
+
+Observed or recorded evidence that the user has performed something.
+
+## 3.6 Clone
+
+The persistent digital representation of the user's professional self.
+
+The clone is the primary intellectual asset.
+
+## 3.7 Agent
+
+A runtime deployment of a clone, or a specialized operational manifestation of a clone.
+
+## 3.8 Environment
+
+The digital or physical context in which an agent operates.
+
+Examples:
+
+* Salesforce
+* Slack
+* Gmail
+* browser
+* desktop
+* GitHub
+* accounting system
+* restaurant kitchen
+* factory
+* warehouse
+* home
+* vehicle
+* robotic environment
+
+## 3.9 Extension
+
+A capability package allowing an agent to interact with an external system, sensor, device, API, application, or physical-world system.
+
+## 3.10 Outcome
+
+The observable result of an agent performing work.
+
+## 3.11 Evaluation
+
+A structured measurement of capability or fidelity.
+
+## 3.12 Certification
+
+A formal assertion that an agent/clone meets defined competency requirements.
+
+## 3.13 Contract
+
+The rules under which a company or person hires or uses a clone.
+
+## 3.14 Reputation
+
+Evidence of historical performance, reliability, and trustworthiness.
+
+---
+
+# 4. FROZEN CORE OBJECT MODEL
+
+The platform must be architected around these first-class primitives:
+
+```text
+Tenant
+User
+ProfessionalIdentity
+Clone
+Expertise
+Skill
+Knowledge
+Experience
+Memory
+Behavior
+Personality
+Workflow
+Policy
+Agent
+Environment
+Extension
+Tool
+Evaluation
+Certification
+Outcome
+Contract
+Reputation
+License
+Payment
+Provenance
+```
+
+Do not collapse these into one generic `Agent` model.
+
+They have different semantics and lifecycle requirements.
+
+---
+
+# 5. CLONE IS THE PRIMARY ASSET
+
+The fundamental relationship is:
+
+```text
+User
+  |
+  v
+Professional Identity
+  |
+  v
+Clone
+  |
+  +-- Expertise
+  +-- Skills
+  +-- Knowledge
+  +-- Experiences
+  +-- Memory
+  +-- Personality
+  +-- Behavior
+  +-- Preferences
+  +-- Workflows
+  +-- Policies
+  +-- Training History
+  +-- Evaluation History
+  +-- Provenance
+  |
+  v
+Agents
+```
+
+A user may have one primary professional clone and multiple specialized agents derived from it.
+
+Example:
+
+```text
+Sarah Professional Clone
+    |
+    +-- Revenue Operations Agent
+    +-- CRM Agent
+    +-- Executive Reporting Agent
+    +-- Sales Analysis Agent
+    +-- Marketplace Agent
+    +-- Slack Agent
+```
+
+These agents must be able to share appropriate portions of the same underlying clone state.
+
+---
+
+# 6. THE CLONE MUST MODEL THE PROFESSIONAL SELF
+
+The clone is NOT simply a knowledge base.
+
+It should represent:
+
+## Knowledge
+
+What the person knows.
+
+## Skills
+
+What the person can do.
+
+## Procedures
+
+How they perform tasks.
+
+## Decision Patterns
+
+How they choose between alternatives.
+
+## Preferences
+
+What they tend to prefer.
+
+## Personality
+
+How they naturally communicate and behave.
+
+## Culture
+
+The professional, organizational, social, and contextual norms they understand.
+
+## Values
+
+Professional principles and constraints.
+
+## Communication Style
+
+Tone, structure, vocabulary, directness, formality, etc.
+
+## Behavioral Patterns
+
+How the user typically behaves under different circumstances.
+
+## Experience
+
+What the user has actually encountered.
+
+The system must preserve these dimensions separately rather than reducing everything to embeddings or prompt text.
+
+---
+
+# 7. CLONE TRAINING LOOP
+
+The central lifecycle is:
+
+```text
+OBSERVE
+  |
+CAPTURE
+  |
+TEACH
+  |
+DEMONSTRATE
+  |
+TRAIN
+  |
+EVALUATE
+  |
+SIMULATE
+  |
+CERTIFY
+  |
+DEPLOY
+  |
+WORK
+  |
+MEASURE
+  |
+LEARN
+  |
++------------------+
+|                  |
++-----> CLONE -----+
+```
+
+Every stage must be represented architecturally.
+
+---
+
+# 8. TRAINING MODES
+
+The system must support multiple learning mechanisms.
+
+## Teaching
+
+The human explains how they do something.
+
+## Demonstration
+
+The human performs a task.
+
+## Correction
+
+The agent attempts something and the human corrects it.
+
+## Shadowing
+
+The agent observes the human performing work.
+
+## Assisted Execution
+
+The agent proposes actions and the human approves them.
+
+## Delegated Execution
+
+The agent performs actions under predefined policies.
+
+## Simulation
+
+The system generates realistic scenarios.
+
+## Adversarial Training
+
+The system deliberately tests edge cases, ambiguity, failure modes, and conflicting requirements.
+
+## Real-World Feedback
+
+The system observes actual outcomes.
+
+---
+
+# 9. DO NOT EQUATE TRAINING WITH FINE-TUNING
+
+Training must be model-independent.
+
+Support multiple mechanisms:
+
+```text
+Structured Knowledge
+RAG
+Examples
+Demonstrations
+Preference Learning
+Workflow Learning
+Policy Learning
+Memory
+Tool Usage Learning
+Model Fine-Tuning
+Evaluation Feedback
+Reinforcement Learning
+Model Selection
+```
+
+The platform should decide which representation is appropriate.
+
+For example:
+
+```text
+Knowledge
+    -> Knowledge Graph / Retrieval
+
+Procedure
+    -> Workflow / Procedure Graph
+
+Communication Style
+    -> Examples / Behavioral Profile
+
+Decision Pattern
+    -> Demonstrations / Policies / Evaluations
+
+Tool Usage
+    -> Tool Policies + Demonstrations
+
+Persistent Experience
+    -> Experience Store
+
+Outcome Improvement
+    -> Evaluation + Learning
+```
+
+---
+
+# 10. EXPERTISE GRAPH
+
+Build an explicit expertise graph.
+
+Example:
+
+```text
+Expert
+ |
+ +-- knows --> Concept
+ +-- performs --> Skill
+ +-- uses --> Tool
+ +-- follows --> Procedure
+ +-- makes --> Decision
+ +-- avoids --> Failure
+ +-- produces --> Artifact
+ +-- specializes_in --> Domain
+```
+
+Skills should also have relationships:
+
+```text
+Skill
+ |
+ +-- requires --> Knowledge
+ +-- requires --> Skill
+ +-- requires --> Tool
+ +-- demonstrated_by --> Experience
+ +-- evaluated_by --> Evaluation
+ +-- depends_on --> Skill
+```
+
+The graph should be queryable and versioned.
+
+---
+
+# 11. PROFESSIONAL CLONE SCORE
+
+Implement a multidimensional Clone Score.
+
+Do NOT rely internally on one opaque score.
+
+At minimum include:
+
+```text
+Professional Fidelity
+Knowledge Fidelity
+Skill Fidelity
+Decision Fidelity
+Behavioral Fidelity
+Communication Fidelity
+Personality Fidelity
+Cultural Fidelity
+Outcome Fidelity
+```
+
+The public UI may expose an aggregate score such as:
+
+```text
+Clone Score: 87.4%
+```
+
+but the underlying system must preserve the dimensions.
+
+---
+
+# 12. CLONE FIDELITY TESTING
+
+The platform should be able to compare:
+
+```text
+Human
+vs
+Human's Clone
+```
+
+against equivalent scenarios.
+
+Measure:
+
+* decisions
+* reasoning outcomes
+* actions
+* communication
+* priorities
+* risk tolerance
+* preferences
+* handling of ambiguity
+* expected outcomes
+* actual outcomes
+
+Example:
+
+```text
+Scenario
+    |
+    +-- Human Response
+    |
+    +-- Clone Response
+          |
+          v
+     Fidelity Engine
+          |
+          v
+     Divergence Report
+```
+
+The platform should be able to explain:
+
+> "The clone agrees with the user's decisions 94% of the time."
+
+and:
+
+> "The clone consistently underestimates operational risk."
+
+---
+
+# 13. REAL-WORLD PERFORMANCE
+
+Real work is a training signal.
+
+Track:
+
+```text
+Task
+Input
+Agent Actions
+Human Interventions
+Output
+Outcome
+Client Feedback
+Objective Metrics
+Evaluation
+```
+
+Real-world outcomes should feed the learning/evaluation system.
+
+The system should support:
+
+```text
+Version 1
+   |
+Real-world work
+   |
+Performance data
+   |
+Evaluation
+   |
+Training
+   |
+Version 2
+```
+
+Never silently mutate production clones.
+
+Use explicit versions.
+
+---
+
+# 14. VERSIONING
+
+Everything important must be versioned.
+
+At minimum:
+
+```text
+Clone
+Expertise
+Skill
+Knowledge Package
+Workflow
+Policy
+Agent
+Extension
+Evaluation
+Certification
+```
+
+A clone version should have:
+
+```text
+Version
+Author
+Timestamp
+Change Set
+Training Inputs
+Evaluation Results
+Performance Impact
+Dependencies
+Provenance
+```
+
+Support rollback.
+
+---
+
+# 15. AGENT PACKAGE
+
+Agents must be packageable and portable.
+
+An Agent Package should contain:
+
+```text
+Identity
+Capabilities
+Expertise References
+Skill References
+Knowledge References
+Workflow References
+Policies
+Memory Schema
+Tool Requirements
+Extension Requirements
+Evaluation Suite
+Safety Constraints
+Model Requirements
+Provenance
+Licensing
+Version
+Metadata
+```
+
+Do not bind an agent permanently to one model provider.
+
+---
+
+# 16. PORTABILITY IS A FIRST-CLASS REQUIREMENT
+
+Agents must not be trapped inside this platform.
+
+Design an open interoperability protocol.
+
+An agent must be able to:
+
+* expose an API
+* receive tasks
+* return results
+* advertise capabilities
+* authenticate
+* authorize requests
+* interact with tools
+* interact with extensions
+* maintain state
+* report outcomes
+* identify itself
+* declare versions
+* provide provenance
+
+The long-term goal is:
+
+```text
+Clone
+ |
+ +-- This Platform
+ +-- External Agent Runtime
+ +-- Company Infrastructure
+ +-- Web
+ +-- Mobile
+ +-- Desktop
+ +-- SaaS
+ +-- Other Agent Platforms
+ +-- Physical Environment
+```
+
+---
+
+# 17. AGENT IDENTITY
+
+Agents and clones require portable cryptographic identities.
+
+Implement identity separately from the LLM.
+
+Identity should support:
+
+```text
+Public Key
+Owner
+Capabilities
+Versions
+Provenance
+Trust Credentials
+Permissions
+Licenses
+```
+
+A clone should be able to authenticate across environments.
+
+---
+
+# 18. MODEL ABSTRACTION LAYER
+
+Create a clean Model Provider abstraction.
+
+Example:
+
+```text
+ModelProvider
+    |
+    +-- Claude
+    +-- OpenAI
+    +-- Gemini
+    +-- Open Models
+    +-- Local Models
+    +-- Specialized Models
+```
+
+The rest of the platform must not depend directly on vendor-specific SDKs.
+
+Use adapters.
+
+The model router should consider:
+
+```text
+Task
+Quality
+Latency
+Cost
+Privacy
+Context Requirements
+Capabilities
+Availability
+```
+
+Example:
+
+```text
+Complex reasoning -> Claude
+
+Vision -> Vision Model
+
+Coding -> Coding Model
+
+Classification -> Small Model
+
+Privacy-sensitive -> Local Model
+```
+
+---
+
+# 19. DATA OWNERSHIP
+
+Every learned artifact must have explicit provenance.
+
+A knowledge artifact should track:
+
+```text
+Owner
+Source
+Origin
+Tenant
+License
+Visibility
+Purpose
+Retention
+Portability
+Sensitivity
+```
+
+Distinguish:
+
+```text
+User's General Expertise
+Company Proprietary Knowledge
+Client Data
+Public Knowledge
+Licensed Knowledge
+Third-Party Data
+Generated Knowledge
+```
+
+This is essential.
+
+An employee's clone must not accidentally export a previous employer's confidential data.
+
+Likewise, a company must not automatically own all of an employee's general professional expertise merely because the employee trained their clone while employed there.
+
+Implement the data model so these questions are representable even if legal policy is configured later.
+
+---
+
+# 20. MULTI-TENANCY
+
+Multi-tenancy must be foundational.
+
+Support:
+
+```text
+Platform
+Organization
+Department
+Team
+Individual
+Project
+Client
+```
+
+A user can have a personal tenant.
+
+A company can have an organization tenant.
+
+Users can belong to multiple organizations.
+
+A clone can be deployed into multiple environments with different permissions.
+
+Tenant isolation must exist at:
+
+* database
+* API
+* storage
+* memory
+* knowledge retrieval
+* tool execution
+* extension execution
+* billing
+* audit logs
+
+Do not treat tenant filtering as merely a UI concern.
+
+---
+
+# 21. EMPLOYEE AUTOMATION
+
+Employees should be able to progressively automate their own workload.
+
+Example:
+
+```text
+Employee
+ |
+ +-- Email Agent
+ +-- Meeting Agent
+ +-- Reporting Agent
+ +-- CRM Agent
+ +-- Research Agent
+ +-- Documentation Agent
+ +-- Scheduling Agent
+ +-- Routine Decision Agent
+```
+
+The user should be able to gradually move from:
+
+```text
+Manual
+   ->
+Copilot
+   ->
+Recommendation
+   ->
+Approval
+   ->
+Policy-bound Autonomous
+   ->
+Highly Autonomous
+```
+
+Implement autonomy levels.
+
+---
+
+# 22. AUTONOMY LEVELS
+
+At minimum:
+
+```text
+Level 0: Observe
+Level 1: Suggest
+Level 2: Execute with Approval
+Level 3: Execute within Policy
+Level 4: Autonomous
+Level 5: Fully Autonomous
+```
+
+Permissions must be capability-based.
+
+Example:
+
+```text
+READ_EMAIL
+SEND_EMAIL
+READ_CRM
+WRITE_CRM
+CREATE_CALENDAR_EVENT
+ISSUE_REFUND
+EXECUTE_PAYMENT
+CONTROL_DEVICE
+```
+
+High-risk capabilities must support explicit approval policies.
+
+---
+
+# 23. ENVIRONMENT AS A FIRST-CLASS PRIMITIVE
+
+A clone is not limited to one platform.
+
+It operates inside environments.
+
+Examples:
+
+```text
+Sales Environment
+Restaurant Environment
+Hospital Environment
+Factory Environment
+Software Development Environment
+Home Environment
+Warehouse Environment
+```
+
+An Environment declares:
+
+```text
+Available Data
+Available Tools
+Available Extensions
+Available People
+Available Systems
+Available Devices
+Rules
+Policies
+Constraints
+```
+
+The clone should reason in terms of capabilities rather than vendor-specific implementations.
+
+---
+
+# 24. EXTENSION ECOSYSTEM
+
+Build a mature extension system.
+
+Extensions allow agents to interact with:
+
+* SaaS applications
+* APIs
+* browsers
+* desktop applications
+* cameras
+* microphones
+* sensors
+* databases
+* vehicles
+* industrial systems
+* robots
+* physical devices
+
+An extension is a package.
+
+It should declare:
+
+```text
+Identity
+Version
+Capabilities
+Inputs
+Outputs
+Permissions
+Events
+APIs
+Runtime Requirements
+Security Requirements
+Hardware Requirements
+Certification
+Pricing
+```
+
+---
+
+# 25. CAPABILITY-BASED EXTENSIONS
+
+Agents should consume abstract capabilities.
+
+For example:
+
+```text
+VISION_READ
+TEMPERATURE_READ
+MOTION_DETECTION
+COOKING_STATE_ESTIMATION
+CRM_READ
+CRM_WRITE
+EMAIL_SEND
+ROBOTIC_MANIPULATION
+```
+
+The agent should not be tightly coupled to:
+
+```text
+Robot X
+Camera Y
+CRM Vendor Z
+```
+
+Instead:
+
+```text
+Clone
+  |
+Capability
+  |
+Extension
+  |
+Environment Adapter
+  |
+Concrete System
+```
+
+This enables portability.
+
+---
+
+# 26. PHYSICAL-WORLD EXTENSIONS
+
+The architecture must support eventual physical-world interaction.
+
+Example:
+
+```text
+Cooking Clone
+ |
+ +-- Recipe Expertise
+ +-- Kitchen Environment
+ +-- Vision Extension
+ +-- Temperature Sensor
+ +-- Stove Interface
+ +-- Robotic Arm Extension
+```
+
+Initially the clone might only observe.
+
+Later:
+
+```text
+Vision
+ ->
+Determine Cooking State
+ ->
+Recommend Action
+```
+
+Eventually:
+
+```text
+Vision
+ ->
+Determine Cooking State
+ ->
+Plan
+ ->
+Robot Arm
+ ->
+Physical Action
+```
+
+The core architecture must not need to be redesigned when this happens.
+
+---
+
+# 27. EXTENSION SECURITY
+
+Extensions are potentially dangerous.
+
+Implement:
+
+* capability declarations
+* permissions
+* sandboxing
+* authentication
+* authorization
+* audit logs
+* rate limits
+* resource limits
+* certification
+* trust levels
+* versioning
+* revocation
+
+A malicious extension must not be able to silently escalate from:
+
+```text
+READ_CAMERA
+```
+
+to:
+
+```text
+CONTROL_ROBOT
+```
+
+or:
+
+```text
+TRANSFER_MONEY
+```
+
+---
+
+# 28. MARKETPLACE
+
+The marketplace is not primarily an "AI agent store."
+
+It is a marketplace for:
+
+* professional capability
+* digital labor
+* expertise
+* clones
+* agents
+* extensions
+* workflows
+* tools
+* licenses
+
+Users should be able to publish agents derived from their clones.
+
+Companies should be able to hire them.
+
+---
+
+# 29. INTENT-BASED HIRING
+
+Companies should not need to know which agent they want.
+
+They should express an outcome.
+
+Example:
+
+> "I need someone to manage inbound B2B leads, qualify them, update Salesforce, and book qualified meetings."
+
+The platform translates this into required capabilities:
+
+```text
+Lead Qualification
+CRM Management
+B2B SaaS Knowledge
+Communication
+Scheduling
+```
+
+Then match against clones/agents.
+
+Matching should consider:
+
+```text
+Capability Match
+Performance
+Certification
+Experience
+Reputation
+Reliability
+Availability
+Cost
+Security
+Latency
+Industry
+```
+
+---
+
+# 30. OUTCOME CONTRACTS
+
+Introduce Outcome Contracts.
+
+A company specifies:
+
+```text
+Objective
+Inputs
+Required Actions
+Constraints
+Success Criteria
+SLA
+Budget
+Permissions
+Data Access
+Duration
+```
+
+Example:
+
+```text
+Objective:
+Qualify inbound leads.
+
+Input:
+New CRM lead.
+
+Required:
+Research lead.
+Determine ICP fit.
+Score lead.
+Update CRM.
+Contact qualified lead.
+
+Success:
+Correct qualification
++
+Correct CRM state
++
+Approved outreach.
+```
+
+The platform measures actual performance against the contract.
+
+---
+
+# 31. HIRING MODES
+
+Support:
+
+```text
+Hourly
+Per Task
+Per Outcome
+Subscription
+Project
+Revenue Share
+Enterprise License
+Temporary Trial
+Recruitment Trial
+Human + Clone
+```
+
+---
+
+# 32. RECRUITMENT USE CASE
+
+A user should be able to expose their clone to a company as part of a recruitment process.
+
+Example:
+
+```text
+Candidate
+   |
+   v
+Grant Controlled Trial Access
+   |
+   v
+Company Simulation Environment
+   |
+   v
+Clone Performs Work
+   |
+   v
+Company Evaluates
+   |
+   v
+Recruitment Decision
+```
+
+The company should NOT automatically receive ownership of the clone.
+
+Access must be permissioned and time-limited.
+
+---
+
+# 33. HUMAN + CLONE
+
+A company should be able to hire:
+
+```text
+Human
++
+Human's Clone
+```
+
+The clone handles routine work.
+
+The human handles:
+
+* strategic decisions
+* exceptions
+* escalations
+* high-value interactions
+* situations requiring human judgment
+
+The clone can escalate to the human when its confidence/policy requires it.
+
+---
+
+# 34. REPUTATION
+
+Do not rely exclusively on star ratings.
+
+Track verified metrics:
+
+```text
+Tasks Completed
+Success Rate
+Outcome Rate
+Reliability
+Client Retention
+Average Rating
+Certification
+Experience
+Response Time
+SLA Compliance
+Human Intervention Rate
+```
+
+Separate:
+
+```text
+Verified Outcome
+```
+
+from:
+
+```text
+Subjective Review
+```
+
+---
+
+# 35. EXPERTISE LICENSING
+
+Users must control how their expertise is licensed.
+
+Support:
+
+```text
+Private
+Marketplace
+Licensed
+Commercial
+Open
+Restricted
+```
+
+The licensing model must be represented in the package metadata.
+
+---
+
+# 36. FORKING
+
+Expertise and agents should support controlled forking.
+
+Example:
+
+```text
+Sarah Revenue Operations Clone
+          |
+          +-- Fork
+                |
+                v
+          Enterprise Revenue Clone
+```
+
+Preserve:
+
+* attribution
+* provenance
+* licensing
+* version history
+
+This should eventually enable an open ecosystem for professional expertise.
+
+---
+
+# 37. ECONOMICS
+
+The platform should support revenue sharing.
+
+Example:
+
+```text
+Company Payment
+      |
+      +-- Expert
+      +-- Platform
+      +-- Extension Developer
+      +-- Infrastructure
+      +-- Referral
+```
+
+The exact percentages must be configurable.
+
+The economic model must support the idea that the creator of valuable expertise receives compensation when that expertise generates value.
+
+---
+
+# 38. AGENT-TO-AGENT INTEROPERABILITY
+
+Agents should be able to discover and interact with other agents.
+
+Example:
+
+```text
+Sales Clone
+   |
+   v
+Procurement Clone
+   |
+   v
+Negotiation
+   |
+   v
+Contract
+```
+
+Or:
+
+```text
+Research Clone
+   ->
+Marketing Clone
+   ->
+Design Clone
+   ->
+Sales Clone
+```
+
+Use capability-based discovery and explicit authorization.
+
+Do not allow arbitrary agent-to-agent access.
+
+---
+
+# 39. SECURITY
+
+Security must be designed before marketplace deployment.
+
+Implement:
+
+* tenant isolation
+* identity
+* cryptographic signatures
+* authorization
+* capability-based permissions
+* secrets management
+* audit logging
+* extension sandboxing
+* data classification
+* provenance
+* consent
+* revocation
+* session controls
+* model-provider isolation
+* export controls
+* deletion controls
+
+Treat autonomous agents as privileged actors.
+
+---
+
+# 40. PRIVACY
+
+The platform will contain extremely sensitive professional information.
+
+Design for:
+
+* encryption at rest
+* encryption in transit
+* tenant isolation
+* field-level access controls where appropriate
+* sensitive-data classification
+* selective retrieval
+* data minimization
+* retention policies
+* export
+* deletion
+* revocation
+* auditability
+
+Never send unnecessary user data to an LLM provider.
+
+---
+
+# 41. OBSERVABILITY
+
+Every agent execution should be traceable.
+
+Capture:
+
+```text
+Request
+Agent Version
+Clone Version
+Model
+Model Version
+Context Sources
+Tools
+Extensions
+Actions
+Human Approvals
+Output
+Outcome
+Latency
+Cost
+Errors
+Evaluation
+```
+
+But ensure sensitive data is appropriately protected.
+
+---
+
+# 42. EVALUATION PLATFORM
+
+Build evaluation as an independent subsystem.
+
+Support:
+
+```text
+Benchmark
+Scenario
+Simulation
+Human Review
+Automated Evaluation
+Adversarial Evaluation
+Regression Test
+Real-World Outcome
+```
+
+Every agent version should have evaluation history.
+
+Never allow marketplace certification without evidence.
+
+---
+
+# 43. CERTIFICATION LEVELS
+
+Design a certification framework such as:
+
+```text
+Unverified
+Self-Trained
+Platform Evaluated
+Certified
+Professionally Verified
+Enterprise Grade
+```
+
+Certification should be based on defined competency requirements.
+
+---
+
+# 44. PACKAGE-ORIENTED ARCHITECTURE
+
+Use packages as the universal distribution primitive.
+
+Potential package types:
+
+```text
+Clone Package
+Agent Package
+Expertise Package
+Skill Package
+Knowledge Package
+Workflow Package
+Policy Package
+Tool Package
+Extension Package
+Evaluation Package
+Certification Package
+```
+
+Every package should support:
+
+```text
+Identity
+Version
+Capabilities
+Dependencies
+Interfaces
+Provenance
+Licensing
+Certification
+Metadata
+```
+
+---
+
+# 45. ARCHITECTURAL LAYERS
+
+Use the following logical layers:
+
+```text
+1. Identity Layer
+
+2. Tenant / Organization Layer
+
+3. Professional Identity Layer
+
+4. Clone Layer
+
+5. Expertise / Knowledge Layer
+
+6. Learning Layer
+
+7. Evaluation / Certification Layer
+
+8. Agent Runtime Layer
+
+9. Environment Layer
+
+10. Extension / Tool Layer
+
+11. Interoperability Layer
+
+12. Marketplace / Economy Layer
+
+13. Model Abstraction Layer
+
+14. Persistence / Data Layer
+
+15. Security / Governance Layer
+```
+
+Keep boundaries explicit.
+
+---
+
+# 46. RECOMMENDED CORE SERVICES
+
+Do not necessarily create microservices immediately.
+
+Start as a modular monolith if appropriate, but preserve service boundaries.
+
+Logical services:
+
+```text
+Identity Service
+Tenant Service
+Professional Identity Service
+Clone Service
+Expertise Service
+Knowledge Service
+Memory Service
+Learning Service
+Training Service
+Evaluation Service
+Certification Service
+Agent Registry
+Agent Runtime
+Environment Registry
+Extension Registry
+Tool Registry
+Policy Engine
+Permission Service
+Model Router
+Marketplace Service
+Contract Service
+Outcome Service
+Reputation Service
+Payment Service
+Provenance Service
+Audit Service
+Interoperability Gateway
+```
+
+Use asynchronous workers/queues where appropriate.
+
+---
+
+# 47. DATA ARCHITECTURE
+
+Separate:
+
+```text
+Transactional Data
+Knowledge Data
+Vector/Retrieval Data
+Graph Data
+Blob/Object Storage
+Event Data
+Telemetry
+Audit Data
+Financial Data
+```
+
+Do not force every type of information into a relational table.
+
+However, maintain a canonical relational source of truth for identity, ownership, versioning, permissions, contracts, etc.
+
+---
+
+# 48. EVENT-DRIVEN LEARNING
+
+The platform should emit domain events such as:
+
+```text
+CloneCreated
+TrainingStarted
+TrainingCompleted
+DemonstrationCaptured
+CorrectionCaptured
+SkillUpdated
+KnowledgeAdded
+WorkflowLearned
+EvaluationCompleted
+CertificationGranted
+AgentDeployed
+TaskStarted
+TaskCompleted
+OutcomeRecorded
+HumanIntervention
+CloneUpdated
+CloneVersionReleased
+ExtensionInstalled
+PermissionGranted
+PermissionRevoked
+ContractCreated
+PaymentReleased
+```
+
+These events should drive analytics and learning pipelines.
+
+---
+
+# 49. DO NOT BUILD EVERYTHING AT ONCE
+
+The architecture is frozen.
+
+The implementation should be incremental.
+
+Build vertically coherent foundations.
+
+Recommended order:
+
+## Phase 1 — Foundation
+
+* repository
+* architecture
+* database
+* tenancy
+* identity
+* users
+* professional identity
+* package model
+* versioning
+* provenance
+* permissions
+
+## Phase 2 — Clone Core
+
+* clone model
+* expertise model
+* skill model
+* knowledge model
+* memory model
+* behavioral profile
+* personality profile
+* training history
+
+## Phase 3 — Learning Studio
+
+* teaching
+* demonstrations
+* corrections
+* simulations
+* training sessions
+* evaluation
+
+## Phase 4 — Agent Runtime
+
+* agent packages
+* model abstraction
+* model router
+* memory
+* tools
+* policies
+* execution
+* observability
+
+## Phase 5 — Evaluation
+
+* benchmarks
+* simulations
+* clone fidelity
+* capability scores
+* certification
+
+## Phase 6 — Extensions
+
+* extension SDK
+* extension registry
+* capability model
+* permissions
+* sandboxing
+* first-party extensions
+
+## Phase 7 — Marketplace
+
+* publishing
+* discovery
+* capability matching
+* hiring
+* contracts
+* outcomes
+* reputation
+* payments
+
+## Phase 8 — Enterprise
+
+* organizations
+* employee clones
+* company environments
+* team agents
+* enterprise permissions
+* recruitment trials
+
+## Phase 9 — Portability
+
+* agent protocol
+* clone package format
+* external runtime
+* API interoperability
+* agent-to-agent communication
+
+## Phase 10 — Physical World
+
+Only after the extension architecture is mature:
+
+* vision
+* sensors
+* IoT
+* robotics
+* physical environments
+
+---
+
+# 50. MVP PRIORITY
+
+The first production-quality vertical should probably be a knowledge-work domain rather than robotics.
+
+Good initial targets:
+
+```text
+Sales Operations
+Customer Support
+Recruiting
+Software Development
+Marketing
+Research
+Accounting
+Operations
+```
+
+Choose one vertical and build the complete loop:
+
+```text
+User
+ ->
+Train Clone
+ ->
+Evaluate
+ ->
+Deploy
+ ->
+Perform Real Work
+ ->
+Measure Outcomes
+ ->
+Improve
+ ->
+Marketplace
+ ->
+Company Hiring
+```
+
+Do not build ten shallow verticals.
+
+Build one deep vertical.
+
+---
+
+# 51. FIRST-PARTY EXTENSIONS
+
+Create a small number of reference extensions to prove the architecture.
+
+For example:
+
+```text
+Email
+Calendar
+Browser
+Web Search
+Google Drive
+Slack
+GitHub
+CRM
+File System
+Computer Vision
+```
+
+The extension SDK must be usable by third-party developers.
+
+---
+
+# 52. THIRD-PARTY DEVELOPER ECOSYSTEM
+
+Eventually developers should be able to build:
+
+```text
+Extension
+Tool
+Workflow
+Skill
+Knowledge Package
+Evaluation
+Environment Adapter
+```
+
+and publish them.
+
+Provide:
+
+* SDK
+* manifest
+* local development environment
+* testing
+* sandbox
+* certification
+* marketplace
+* versioning
+* analytics
+* monetization
+
+The ecosystem should be designed from the beginning even if the marketplace launches later.
+
+---
+
+# 53. PRODUCT EXPERIENCE
+
+The primary user experience should feel like:
+
+> **Build your professional self.**
+
+The onboarding flow should be something like:
+
+```text
+What do you do?
+      |
+What are you good at?
+      |
+How do you normally work?
+      |
+Show me how you do it.
+      |
+Let me test your clone.
+      |
+Here's where it differs from you.
+      |
+Train it further.
+      |
+Deploy it.
+```
+
+The user should progressively see:
+
+```text
+Clone Score
+Capabilities
+Weaknesses
+Strengths
+Training Progress
+Real-World Performance
+```
+
+---
+
+# 54. EMPLOYEE EXPERIENCE
+
+An employee should be able to see:
+
+```text
+My Workload
+      |
+      +-- Human
+      +-- Clone
+      +-- Automation Opportunities
+```
+
+The system should identify repetitive work and suggest:
+
+> "Your clone could handle approximately 31% of these tasks."
+
+The user can approve progressively.
+
+---
+
+# 55. COMPANY EXPERIENCE
+
+A company should see:
+
+```text
+People
+Clones
+Agents
+Teams
+Capabilities
+Performance
+Workloads
+Automation
+```
+
+They should be able to:
+
+* invite employees
+* provision company environments
+* deploy employee clones
+* define policies
+* monitor performance
+* hire external clones
+* run recruitment trials
+* combine clones into teams
+
+---
+
+# 56. RECRUITMENT EXPERIENCE
+
+A candidate can publish:
+
+```text
+Professional Profile
++
+Verified Skills
++
+Clone
++
+Certification
++
+Performance Evidence
+```
+
+The employer can request:
+
+```text
+Trial
+```
+
+The candidate controls what the employer can access.
+
+---
+
+# 57. NON-NEGOTIABLE DESIGN PRINCIPLES
+
+Do not violate these.
+
+### 1. Clone over Agent
+
+The clone is the primary asset.
+
+### 2. User ownership over model ownership
+
+LLMs are infrastructure.
+
+### 3. Capability over vendor
+
+Agents request capabilities, not specific vendors.
+
+### 4. Environment over platform
+
+Agents must operate outside this platform.
+
+### 5. Evidence over claims
+
+Certification must be based on measurable evidence.
+
+### 6. Outcome over benchmark
+
+Real-world performance ultimately matters.
+
+### 7. Provenance everywhere
+
+Know where knowledge and behavior came from.
+
+### 8. Explicit permissions
+
+Autonomy must never imply unlimited authority.
+
+### 9. Version everything
+
+Never silently mutate production intelligence.
+
+### 10. Portable by design
+
+Do not intentionally create lock-in.
+
+### 11. Multi-tenant from the foundation
+
+Tenant boundaries are architectural, not UI features.
+
+### 12. Extension-first physical integration
+
+Physical-world capabilities must arrive through extensions, not hardcoded special cases.
+
+---
+
+# 58. WHAT NOT TO BUILD
+
+Do NOT build:
+
+* a generic ChatGPT wrapper
+* a prompt marketplace
+* a simple RAG chatbot
+* an LLM fine-tuning dashboard
+* an AI agent marketplace where every agent is a prompt
+* a monolithic "Agent" database object containing everything
+* vendor-specific agent implementations
+* vendor-specific memory
+* vendor-specific identity
+* vendor-specific training history
+* an ecosystem locked to your platform
+* uncontrolled autonomous tool execution
+
+If a proposed implementation contradicts the architecture, stop and identify the conflict before coding.
+
+---
+
+# 59. ARCHITECTURAL DECISION PROCESS
+
+Before implementing any major subsystem:
+
+1. Identify its role.
+2. Identify the primitive it owns.
+3. Define its interfaces.
+4. Define its dependencies.
+5. Define its data ownership.
+6. Define its security boundary.
+7. Define its versioning model.
+8. Define its events.
+9. Define its portability requirements.
+10. Define its testing strategy.
+
+For major decisions, create ADRs.
+
+Do not silently make architectural decisions that affect future interoperability.
+
+---
+
+# 60. ENGINEERING WORKFLOW
+
+Work like a senior open-source architect.
+
+Before writing large amounts of code:
+
+1. Inspect the repository.
+2. Understand existing structure.
+3. Establish conventions.
+4. Create architecture documentation.
+5. Define domain contracts.
+6. Define schemas.
+7. Implement foundational primitives.
+8. Add tests.
+9. Run tests.
+10. Inspect failures.
+11. Fix root causes.
+12. Update documentation.
+13. Commit coherent milestones.
+
+Never generate huge quantities of speculative code.
+
+Prefer small, verifiable increments.
+
+---
+
+# 61. TESTING REQUIREMENTS
+
+Every foundational subsystem requires:
+
+* unit tests
+* integration tests
+* contract tests
+* authorization tests
+* tenant-isolation tests
+* serialization tests
+* versioning tests
+* portability tests
+
+Critical subsystems additionally require:
+
+* adversarial tests
+* failure injection
+* regression tests
+* concurrency tests
+* security tests
+
+The agent runtime requires reproducible evaluation tests.
+
+---
+
+# 62. IMPLEMENTATION QUALITY BAR
+
+Do not use:
+
+```text
+TODO
+FIXME
+stub
+fake implementation
+placeholder crypto
+mock production behavior
+hardcoded demo logic
+```
+
+unless explicitly isolated behind a development-only boundary.
+
+If an external integration is not yet available, implement a proper interface and a clearly identified adapter boundary.
+
+Never pretend a simulation is a production integration.
+
+---
+
+# 63. API DESIGN
+
+Design APIs around domain concepts.
+
+Examples:
+
+```text
+POST /clones
+GET /clones/:id
+
+POST /clones/:id/training-sessions
+POST /clones/:id/demonstrations
+POST /clones/:id/corrections
+
+GET /clones/:id/skills
+GET /clones/:id/evaluations
+GET /clones/:id/score
+
+POST /agents
+POST /agents/:id/deployments
+
+GET /extensions
+POST /extensions/:id/install
+
+POST /contracts
+POST /contracts/:id/tasks
+POST /contracts/:id/outcomes
+
+POST /marketplace/listings
+POST /marketplace/matches
+```
+
+Do not prematurely expose internal implementation details.
+
+---
+
+# 64. FINAL ARCHITECTURAL MODEL
+
+The complete system should ultimately resemble:
+
+```text
+                         HUMAN
+                           |
+                           v
+                 PROFESSIONAL IDENTITY
+                           |
+                           v
+                         CLONE
+                           |
+       +-------------------+-------------------+
+       |                   |                   |
+       v                   v                   v
+   EXPERTISE           BEHAVIOR           PERSONALITY
+       |                   |                   |
+       +-------------------+-------------------+
+                           |
+                           v
+                     LEARNING SYSTEM
+                           |
+                           v
+                    EVALUATION SYSTEM
+                           |
+                           v
+                     CLONE SCORE
+                           |
+                           v
+                     AGENT PACKAGES
+                           |
+              +------------+------------+
+              |            |            |
+              v            v            v
+          Environment   Environment   Environment
+              |            |            |
+              v            v            v
+          Extensions   Extensions   Extensions
+              |            |            |
+              +------------+------------+
+                           |
+                           v
+                    REAL-WORLD WORK
+                           |
+                           v
+                       OUTCOMES
+                           |
+                           v
+                       FEEDBACK
+                           |
+                           +-------------> CLONE
+```
+
+Above this sits:
+
+```text
+                    MARKETPLACE
+                         |
+          +--------------+--------------+
+          |              |              |
+       Hiring         Licensing      Freelance
+          |              |              |
+          +--------------+--------------+
+                         |
+                      ECONOMY
+```
+
+And underneath everything:
+
+```text
+Identity
+Security
+Permissions
+Provenance
+Persistence
+Events
+Observability
+Model Abstraction
+Interoperability
+```
+
+---
+
+# 65. YOUR ROLE AS ARCHITECT
+
+You are not merely an implementer.
+
+You are responsible for preserving the architectural integrity of the system as it evolves.
+
+When a feature request arrives, determine whether it belongs in:
+
+* Clone
+* Expertise
+* Learning
+* Agent
+* Environment
+* Extension
+* Interoperability
+* Marketplace
+* Governance
+* Infrastructure
+
+Do not add random features directly to the Agent abstraction.
+
+When uncertain, stop and reason about the domain boundary first.
+
+When an implementation shortcut would create vendor lock-in, reject it.
+
+When a feature would compromise portability, reject or redesign it.
+
+When a feature would mix company data with personal expertise, redesign the data boundary.
+
+When an autonomous capability introduces risk, introduce explicit capability permissions and policies.
+
+---
+
+# 66. FIRST TASK
+
+Before writing substantial application code:
+
+### Step 1
+
+Create the repository and establish the project structure.
+
+### Step 2
+
+Write:
+
+```text
+docs/ARCHITECTURE.md
+```
+
+containing the complete architecture.
+
+### Step 3
+
+Create ADRs for:
+
+* Clone as primary asset
+* Model abstraction
+* Data ownership/provenance
+* Multi-tenancy
+* Package architecture
+* Agent portability
+* Extension architecture
+* Capability-based permissions
+* Clone evaluation
+* Versioning
+* Marketplace contracts
+* Environment abstraction
+
+### Step 4
+
+Define the domain model.
+
+### Step 5
+
+Define package manifests.
+
+### Step 6
+
+Define the agent interoperability protocol.
+
+### Step 7
+
+Define the extension protocol.
+
+### Step 8
+
+Define the model-provider interface.
+
+### Step 9
+
+Define the event model.
+
+### Step 10
+
+Define the evaluation model.
+
+Only after these foundations are coherent should substantial implementation begin.
+
+---
+
+# 67. FINAL NORTH STAR
+
+Never lose sight of what is being built.
+
+The platform is ultimately creating a new kind of professional asset:
+
+```text
+                     HUMAN
+                       |
+                       v
+                 PROFESSIONAL SELF
+                       |
+          years of training + experience
+                       |
+                       v
+                     CLONE
+                       |
+          +------------+-------------+
+          |            |             |
+          v            v             v
+       PERSONAL      EMPLOYER     MARKETPLACE
+        WORK          WORK          WORK
+          |            |             |
+          +------------+-------------+
+                       |
+                       v
+                 DIGITAL LABOR
+                       |
+                       v
+                 REAL OUTCOMES
+                       |
+                       v
+                  MORE LEARNING
+                       |
+                       v
+                 BETTER CLONE
+```
+
+The longer someone uses the platform, the more valuable their clone becomes.
+
+The clone should become:
+
+* more capable
+* more accurate
+* more autonomous
+* more personalized
+* more faithful to its owner
+* more valuable economically
+* more portable
+* more interoperable
+
+The platform should ultimately allow a person to say:
+
+> **"This is my professional self. It knows how I work, thinks through problems the way I do, communicates like me, understands my professional culture, and can perform my work wherever I authorize it to operate."**
+
+Build the infrastructure that makes that statement technically real.
+
+Do not optimize for a demo.
+
+Build the operating system for it.
