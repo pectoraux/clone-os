@@ -230,6 +230,14 @@ model CloneVersion {
   dependenciesJson  String  // JSON: package/extension/model dependencies
   provenanceJson    String  // JSON: provenance (ADR-0003)
 
+  // N1.2A: Immutable Clone State Snapshot. When a version is released,
+  // the complete clone state (persona, personality, skills, knowledge,
+  // memories, workflows, policies, professional identity) is serialized
+  // into this field. Evaluation runs against the SNAPSHOT, not the current
+  // clone — this is how v1.4 and v1.5 are genuinely different evaluations,
+  // not "current clone minus one workflow."
+  stateSnapshotJson  String?
+
   activeForClones Clone[] @relation("CloneActiveVersion")
 
   // Rollback support (ADR-0010)
@@ -648,6 +656,16 @@ model FidelityEvaluation {
   clone           Clone    @relation(fields: [cloneId], references: [id])
   cloneVersionId  String
   tenantId        String
+  // N1.2A: status — FAILED evaluations never produce scores. The old
+  // fallback (fabricate 50% on parse failure) is removed. A FAILED
+  // evaluation persists the error evidence but does NOT contribute to
+  // CloneScore. recomputeCloneScore skips FAILED evaluations.
+  status          String   @default("completed") // completed | failed
+  // N1.2A: score type — not every evaluation contributes equally to the
+  // public CloneScore. Benchmark evaluations are public; private are
+  // owner-only; company/marketplace/adversarial/self are scoped.
+  scoreType       String   @default("fidelity") // fidelity | competence | outcome
+  evaluationSource String  @default("private") // benchmark | private | company | marketplace | adversarial | self | synthetic
   // The comparison result
   agreementRate   Float    @default(0) // overall agreement 0..1
   headlineSummary String   // e.g., "Clone agrees with human 91% of the time"
@@ -656,7 +674,14 @@ model FidelityEvaluation {
   // Evaluation metadata — the evaluator is a SEPARATE model call from the
   // clone response generation. This prevents the LLM from grading itself.
   evaluatorModel  String   // which model was used for evaluation
+  evaluatorProviderId String? // N1.2A: the provider ID (claude | gpt | gemini | local) — supports model A ≠ model B
   evaluatorLatencyMs Int
+  // N1.2A: Reproducibility metadata — enough to reproduce the evaluation
+  scenarioVersion  Int?     // the EvaluationScenario version
+  evaluatorPromptVersion String? // the evaluator prompt template version
+  rubricVersion    String?  // the evaluation rubric version
+  temperature      Float?   // the temperature used for both generation + evaluation
+  inputsHash       String?  // hash of the inputs (for reproducibility)
   // The full evaluation evidence (rubric, metrics, comparison details)
   evidenceJson    String   // JSON: { rubric, perDimensionComparisons, overallAssessment }
   createdAt       DateTime @default(now())

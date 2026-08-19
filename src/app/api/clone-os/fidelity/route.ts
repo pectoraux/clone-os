@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getRequestContext, requireAuthenticated, requireCloneOwner } from '@/lib/auth/server'
 import { FidelityEngine } from '@/lib/fidelity/engine'
+import { ensureSnapshotsExist } from '@/lib/fidelity/snapshot'
 
 export const dynamic = 'force-dynamic'
 
@@ -187,6 +188,17 @@ export async function POST(req: NextRequest) {
       if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.reason }, { status: ownerCheck.status })
 
       const result = await engine.recomputeCloneScore(cloneId, ctx.tenantId!)
+      return NextResponse.json({ ok: true, ...result })
+    }
+
+    case 'ensure_snapshots': {
+      // N1.2A: create retroactive snapshots for existing versions
+      const { cloneId } = body
+      if (!cloneId) return NextResponse.json({ error: 'cloneId required' }, { status: 400 })
+      const ownerCheck = await requireCloneOwner(ctx, cloneId, db)
+      if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.reason }, { status: ownerCheck.status })
+
+      const result = await ensureSnapshotsExist(cloneId)
       return NextResponse.json({ ok: true, ...result })
     }
 

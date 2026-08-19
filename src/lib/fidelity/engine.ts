@@ -1,35 +1,42 @@
-// Clone OS — Real Fidelity Engine (N1.2)
+// Clone OS — Real Fidelity Engine (N1.2 + N1.2A)
 //
 // PURPOSE: Prove empirically that learning makes the clone more faithful
-// to the human. This is NOT about improving the clone — it's about proving
-// "this agent is increasingly becoming a faithful representation of this
-// person's professional self."
+// to the human.
 //
-// Architecture:
-//   EvaluationScenario (controlled professional situation)
-//     ↓
-//   HumanResponse (gold data — the human is the reference model)
-//   CloneResponse (the clone's answer, linked to a specific version)
-//     ↓
-//   FidelityEvaluation (independent evaluator model compares the two)
-//     ↓
-//   FidelityDimensionScore (per-dimension, evidence-backed)
-//     ↓
-//   CloneScore (aggregated from evaluation evidence)
+// N1.2A FIXES:
+// 1. Immutable Clone State Snapshots: runScenario loads the version's
+//    snapshot, not the current clone. For versions without snapshots
+//    (pre-N1.2A), falls back to current clone + excludeWorkflowIds with
+//    a warning.
+// 2. Evaluator failure = FAILED, no score: the old fallback (fabricate
+//    50%) is removed. A FAILED evaluation persists the error evidence
+//    but does NOT contribute to CloneScore.
+// 3. Reproducibility metadata: scenarioVersion, evaluatorPromptVersion,
+//    rubricVersion, temperature, inputsHash.
+// 4. Score type separation: fidelity | competence | outcome. Not every
+//    evaluation contributes equally to the public CloneScore.
 //
-// CRITICAL RULE: The evaluator is a SEPARATE model call from the clone
-// response generation. The model that generates the clone's response is
-// NOT the model that grades it. This prevents the LLM from grading itself.
+// The evaluator is a SEPARATE model call from clone generation (different
+// system prompt). The architecture supports model A ≠ model B — the
+// evaluatorProviderId is configurable. For now, both use ZAIProvider
+// (the only operational adapter), but the evaluatorPromptVersion makes
+// the evaluation reproducible and the evaluatorProviderId makes it
+// swappable.
 //
-// See HARDENING.md (N1.2).
+// See HARDENING.md (N1.2A).
 
 import { db } from '@/lib/db'
-import { ModelRouter, type RoutingSignal } from '@/lib/runtime/model-provider'
+import { ModelRouter, type RoutingSignal, type ModelProvider } from '@/lib/runtime/model-provider'
 import { CloneRuntime } from '@/lib/runtime/clone-runtime'
+import { loadCloneStateSnapshot, type CloneStateSnapshot } from '@/lib/fidelity/snapshot'
 import type { Principal } from '@/lib/auth/request-context'
+import { createHash } from 'crypto'
 
 const router = new ModelRouter()
 const runtime = new CloneRuntime()
+
+const EVALUATOR_PROMPT_VERSION = '1.0.0'
+const RUBRIC_VERSION = '1.0.0'
 
 export interface ScenarioInput {
   cloneId: string
@@ -66,10 +73,11 @@ export interface RunScenarioInput {
   principalId: string
   cloneVersionId: string
   humanResponseId: string
-  // For the v1.4 baseline: exclude workflows that were added in v1.5
-  // (the learned procedure). This simulates running the scenario against
-  // the pre-learning version.
+  // Fallback for versions without snapshots (pre-N1.2A): exclude
+  // specific workflows to approximate an older version's state.
   excludeWorkflowIds?: string[]
+  // N1.2A: configurable evaluator provider (for future model A ≠ model B)
+  evaluatorProviderId?: string
 }
 
 export class FidelityEngine {
@@ -93,7 +101,7 @@ export class FidelityEngine {
     return { scenarioId: scenario.id }
   }
 
-  // Step 2: Capture a HumanResponse (gold data — the reference model)
+  // Step 2: Capture a HumanResponse (gold data)
   async captureHumanResponse(input: HumanResponseInput): Promise<{ humanResponseId: string }> {
     const resp = await db.humanResponse.create({
       data: {
@@ -115,48 +123,55 @@ export class FidelityEngine {
     return { humanResponseId: resp.id }
   }
 
-  // Step 3: Run the scenario against a specific clone version. The clone
-  // generates its response using the CloneRuntime + ModelProvider. The
-  // response is captured as a CloneResponse linked to the version.
-  async runScenario(input: RunScenarioInput): Promise<{ executionId: string; cloneResponseId: string; cloneContent: string }> {
-    const scenario = await db.evaluationScenario.findUnique({
-      where: { id: input.scenarioId },
-    })
+  // Step 3: Run the scenario against a specific clone version.
+  // N1.2A: loads the version's IMMUTABLE SNAPSHOT, not the current clone.
+  // If no snapshot exists (pre-N1.2A version), falls back to current
+  // clone + excludeWorkflowIds with a warning.
+  async runScenario(input: RunScenarioInput): Promise<{ executionId: string; cloneResponseId: string; cloneContent: string; usedSnapshot: boolean }> {
+    const scenario = await db.evaluationScenario.findUnique({ where: { id: input.scenarioId } })
     if (!scenario) throw new Error('Scenario not found')
 
-    const humanResp = await db.humanResponse.findUnique({
-      where: { id: input.humanResponseId },
-    })
+    const humanResp = await db.humanResponse.findUnique({ where: { id: input.humanResponseId } })
     if (!humanResp) throw new Error('Human response not found')
 
-    // Load the clone context using CloneRuntime
-    const clone = await db.clone.findUnique({
-      where: { id: input.cloneId },
-      include: {
-        professionalIdentity: { include: { user: true } },
-        currentVersion: true,
-        skills: true,
-        knowledgeItems: { take: 12, orderBy: { createdAt: 'desc' } },
-        memories: { take: 8, orderBy: { importance: 'desc' } },
-        policies: { take: 8 },
-        workflows: { orderBy: { createdAt: 'desc' } },
-      },
-    })
-    if (!clone) throw new Error('Clone not found')
+    // N1.2A: Try to load the immutable snapshot for this version
+    const snapshot = await loadCloneStateSnapshot(input.cloneVersionId)
+    let systemPrompt: string
+    let usedSnapshot = false
 
-    // If excludeWorkflowIds is set, filter them out (for the v1.4 baseline)
-    if (input.excludeWorkflowIds && input.excludeWorkflowIds.length > 0) {
-      clone.workflows = clone.workflows.filter(
-        (w) => !input.excludeWorkflowIds!.includes(w.id),
-      )
+    if (snapshot) {
+      // Build context from the IMMUTABLE SNAPSHOT — this is the real v1.4
+      // or v1.5 state, not "current clone minus one workflow."
+      systemPrompt = this.buildSystemPromptFromSnapshot(snapshot)
+      usedSnapshot = true
+    } else {
+      // Fallback: no snapshot exists (pre-N1.2A version). Load current
+      // clone + optionally exclude workflows. This is an approximation —
+      // the reviewer correctly noted that this doesn't recreate the
+      // actual version state if non-workflow artifacts changed.
+      console.warn(`[FidelityEngine] No snapshot for version ${input.cloneVersionId}. Using current clone state with excludeWorkflowIds fallback.`)
+      const clone = await db.clone.findUnique({
+        where: { id: input.cloneId },
+        include: {
+          professionalIdentity: { include: { user: true } },
+          skills: true,
+          knowledgeItems: { take: 12, orderBy: { createdAt: 'desc' } },
+          memories: { take: 8, orderBy: { importance: 'desc' } },
+          policies: { take: 8 },
+          workflows: { orderBy: { createdAt: 'desc' } },
+        },
+      })
+      if (!clone) throw new Error('Clone not found')
+      if (input.excludeWorkflowIds?.length) {
+        clone.workflows = clone.workflows.filter((w) => !input.excludeWorkflowIds!.includes(w.id))
+      }
+      const ctx = runtime.buildContext({ clone })
+      systemPrompt = runtime.toSystemPrompt(ctx)
     }
 
-    // Build the execution context using CloneRuntime
-    const ctx = runtime.buildContext({ clone })
-    const systemPrompt = runtime.toSystemPrompt(ctx)
     const prompt = JSON.parse(scenario.promptJson)
 
-    // Create the ScenarioExecution record
+    // Create the ScenarioExecution
     const execution = await db.scenarioExecution.create({
       data: {
         scenarioId: input.scenarioId,
@@ -186,7 +201,6 @@ export class FidelityEngine {
 
     const latencyMs = Date.now() - start
 
-    // Capture the CloneResponse
     const cloneResponse = await db.cloneResponse.create({
       data: {
         scenarioId: input.scenarioId,
@@ -205,20 +219,64 @@ export class FidelityEngine {
       data: { status: 'completed', completedAt: new Date() },
     })
 
-    return { executionId: execution.id, cloneResponseId: cloneResponse.id, cloneContent: response.content }
+    return { executionId: execution.id, cloneResponseId: cloneResponse.id, cloneContent: response.content, usedSnapshot }
+  }
+
+  // Build a system prompt from an immutable snapshot (not the current clone).
+  // This is the N1.2A way: the snapshot represents the exact state at the
+  // time the version was released.
+  private buildSystemPromptFromSnapshot(snapshot: CloneStateSnapshot): string {
+    // Reuse CloneRuntime.toSystemPrompt by constructing an ExecutionContext
+    // from the snapshot. This ensures the prompt format is identical
+    // whether we're using a snapshot or the current clone.
+    const ctx = {
+      cloneId: '',
+      cloneName: snapshot.name,
+      cloneSlug: snapshot.slug,
+      version: snapshot.version,
+      certificationLevel: snapshot.certificationLevel,
+      domain: snapshot.domain,
+      ownerName: snapshot.professionalIdentity?.user?.name ?? null,
+      ownerEmail: snapshot.professionalIdentity?.user?.email ?? null,
+      ownerPublicKey: snapshot.professionalIdentity?.user?.publicKey ?? null,
+      title: snapshot.professionalIdentity?.title ?? null,
+      bio: snapshot.professionalIdentity?.bio ?? null,
+      values: snapshot.professionalIdentity?.values ?? [],
+      culture: snapshot.professionalIdentity?.culture ?? {},
+      persona: snapshot.persona,
+      personality: snapshot.personality,
+      preferences: snapshot.preferences,
+      behavior: snapshot.behavior,
+      skills: snapshot.skills,
+      knowledge: snapshot.knowledge,
+      memories: snapshot.memories,
+      policies: snapshot.policies.map((p) => ({
+        name: p.name,
+        description: p.description,
+        rule: safeParse(p.ruleJson),
+        appliesTo: p.appliesTo,
+      })),
+      workflows: snapshot.workflows.map((w) => ({
+        name: w.name,
+        description: w.description,
+        steps: safeParseArr(w.stepsJson),
+        version: w.version,
+      })),
+      approvedCapabilities: [],
+    }
+    return runtime.toSystemPrompt(ctx)
   }
 
   // Step 4: Evaluate — compare the clone's response to the human's response
-  // using an INDEPENDENT evaluator model. The evaluator is a separate model
-  // call with a different system prompt (it's an evaluator, not the clone).
-  // This prevents the LLM from grading itself.
-  async evaluate(executionId: string, principal: Principal): Promise<{ evaluationId: string; scores: Record<string, number>; agreementRate: number; headline: string }> {
+  // using an INDEPENDENT evaluator model call.
+  //
+  // N1.2A: On parse failure, the evaluation is marked FAILED with no
+  // dimension scores. The old fallback (fabricate 50%) is removed.
+  // A FAILED evaluation does NOT contribute to CloneScore.
+  async evaluate(executionId: string, principal: Principal): Promise<{ evaluationId: string; status: string; scores: Record<string, number>; agreementRate: number; headline: string }> {
     const execution = await db.scenarioExecution.findUnique({
       where: { id: executionId },
-      include: {
-        scenario: true,
-        cloneResponse: true,
-      },
+      include: { scenario: true, cloneResponse: true },
     })
     if (!execution) throw new Error('Execution not found')
     if (!execution.cloneResponse) throw new Error('No clone response for this execution')
@@ -228,14 +286,12 @@ export class FidelityEngine {
     })
     if (!humanResp) throw new Error('No human response for comparison')
 
-    // Build the EVALUATOR prompt (different from the clone prompt)
-    const evaluatorPrompt = buildEvaluatorPrompt(
-      execution.scenario,
-      humanResp,
-      execution.cloneResponse,
-    )
+    // Build the EVALUATOR prompt
+    const evaluatorPrompt = buildEvaluatorPrompt(execution.scenario, humanResp, execution.cloneResponse)
 
     // Use the ModelProvider SPI — the evaluator is a separate model call
+    // with a different system prompt. N1.2A: the evaluatorProviderId is
+    // recorded for reproducibility and future model A ≠ model B support.
     const signal: RoutingSignal = 'complex_reasoning'
     const routing = router.select(signal)
     const provider = routing.provider
@@ -251,8 +307,12 @@ export class FidelityEngine {
     })
 
     const evalLatencyMs = Date.now() - start
+    const inputsHash = createHash('sha256').update(`${execution.scenarioId}:${execution.cloneVersionId}:${humanResp.id}`).digest('hex').slice(0, 16)
 
-    // Parse the evaluator's JSON response
+    // N1.2A: Parse the evaluator's JSON response. On failure, persist
+    // as status='failed' with NO dimension scores and NO agreement rate.
+    // The old fallback (fabricate 50%) is REMOVED — it contaminated the
+    // dataset with fake evidence.
     let evaluation: {
       agreementRate: number
       headline: string
@@ -265,41 +325,74 @@ export class FidelityEngine {
         alignment: string
       }>
     }
+
     try {
       const jsonMatch = evalResponse.content.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         evaluation = JSON.parse(jsonMatch[0])
+        if (!evaluation.dimensions || !Array.isArray(evaluation.dimensions) || evaluation.dimensions.length === 0) {
+          throw new Error('Evaluator returned no dimensions')
+        }
       } else {
         throw new Error('No JSON in evaluator response')
       }
-    } catch {
-      // Fallback: if the evaluator didn't return valid JSON, create a
-      // minimal evaluation
-      evaluation = {
-        agreementRate: 0.5,
-        headline: 'Evaluation parsing failed — using fallback score',
-        dimensions: (JSON.parse(execution.scenario.evaluationDimensionsJson) as string[]).map((dim) => ({
-          dimension: dim,
-          score: 50,
-          evidence: 'Evaluation parsing failed',
-          humanExcerpt: humanResp.content.slice(0, 200),
-          cloneExcerpt: execution.cloneResponse.content.slice(0, 200),
-          alignment: 'partial',
-        })),
+    } catch (e: any) {
+      // N1.2A: FAILED evaluation — no score, no dimensions, never fabricate.
+      const failedEval = await db.fidelityEvaluation.create({
+        data: {
+          executionId,
+          cloneId: execution.cloneId,
+          cloneVersionId: execution.cloneVersionId,
+          tenantId: execution.tenantId,
+          status: 'failed',
+          scoreType: 'fidelity',
+          evaluationSource: 'private',
+          agreementRate: 0,
+          headlineSummary: `EVALUATION FAILED: ${e.message}. No score recorded — retry or use an alternate evaluator.`,
+          evaluatorModel: provider.id,
+          evaluatorProviderId: provider.id,
+          evaluatorLatencyMs: evalLatencyMs,
+          scenarioVersion: execution.scenario.version,
+          evaluatorPromptVersion: EVALUATOR_PROMPT_VERSION,
+          rubricVersion: RUBRIC_VERSION,
+          temperature: 0.7,
+          inputsHash,
+          evidenceJson: JSON.stringify({ status: 'failed', error: e.message, rawResponse: evalResponse.content.slice(0, 2000) }),
+        },
+      })
+      await db.scenarioExecution.update({
+        where: { id: executionId },
+        data: { status: 'failed', completedAt: new Date() },
+      })
+      return {
+        evaluationId: failedEval.id,
+        status: 'failed',
+        scores: {},
+        agreementRate: 0,
+        headline: `EVALUATION FAILED: ${e.message}. No score recorded.`,
       }
     }
 
-    // Persist the FidelityEvaluation
+    // Persist the FidelityEvaluation (status='completed')
     const fidelityEval = await db.fidelityEvaluation.create({
       data: {
         executionId,
         cloneId: execution.cloneId,
         cloneVersionId: execution.cloneVersionId,
         tenantId: execution.tenantId,
+        status: 'completed',
+        scoreType: 'fidelity',
+        evaluationSource: 'private',
         agreementRate: evaluation.agreementRate,
         headlineSummary: evaluation.headline,
         evaluatorModel: provider.id,
+        evaluatorProviderId: provider.id,
         evaluatorLatencyMs: evalLatencyMs,
+        scenarioVersion: execution.scenario.version,
+        evaluatorPromptVersion: EVALUATOR_PROMPT_VERSION,
+        rubricVersion: RUBRIC_VERSION,
+        temperature: 0.7,
+        inputsHash,
         evidenceJson: JSON.stringify({ fullEvaluatorResponse: evalResponse.content }),
       },
     })
@@ -326,6 +419,7 @@ export class FidelityEngine {
 
     return {
       evaluationId: fidelityEval.id,
+      status: 'completed',
       scores,
       agreementRate: evaluation.agreementRate,
       headline: evaluation.headline,
@@ -333,14 +427,18 @@ export class FidelityEngine {
   }
 
   // Step 5: Recompute the CloneScore from recent evaluation evidence.
-  // The score is no longer a fixture — it's aggregated from real evaluations.
-  async recomputeCloneScore(cloneId: string, tenantId: string): Promise<{ dimensions: Record<string, number>; aggregate: number; evidenceCount: number }> {
-    // Get all FidelityDimensionScores for this clone, grouped by dimension
+  // N1.2A: only aggregates evaluations where status='completed'.
+  // FAILED evaluations are skipped — they don't contaminate the score.
+  async recomputeCloneScore(cloneId: string, tenantId: string): Promise<{ dimensions: Record<string, number>; aggregate: number; evidenceCount: number; failedCount: number }> {
     const evaluations = await db.fidelityEvaluation.findMany({
-      where: { cloneId },
+      where: { cloneId, status: 'completed' }, // N1.2A: skip FAILED
       include: { dimensionScores: true },
       orderBy: { createdAt: 'desc' },
-      take: 50, // last 50 evaluations
+      take: 50,
+    })
+
+    const failedCount = await db.fidelityEvaluation.count({
+      where: { cloneId, status: 'failed' },
     })
 
     const dimensionAverages: Record<string, number[]> = {}
@@ -356,7 +454,6 @@ export class FidelityEngine {
       dimensions[dim] = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
     }
 
-    // Compute aggregate (weighted — outcome + decision weigh heaviest)
     const weights: Record<string, number> = {
       decision: 1.4, reasoning: 1.3, behavioral: 1.1, communication: 1.0,
       personality: 0.9, cultural: 0.7, outcome: 1.6,
@@ -369,7 +466,6 @@ export class FidelityEngine {
     }
     const aggregate = weightSum > 0 ? Math.round((total / weightSum) * 10) / 10 : 0
 
-    // Update or create the CloneScore
     const existing = await db.cloneScore.findFirst({
       where: { cloneId },
       orderBy: { computedAt: 'desc' },
@@ -388,14 +484,13 @@ export class FidelityEngine {
           culturalFidelity: dimensions.cultural ?? 0,
           outcomeFidelity: dimensions.outcome ?? 0,
           aggregate,
-          notes: `Computed from ${evaluations.length} evaluation(s).`,
+          notes: `Computed from ${evaluations.length} completed evaluation(s). ${failedCount} failed evaluation(s) excluded.`,
         },
       })
     } else {
       await db.cloneScore.create({
         data: {
-          cloneId,
-          tenantId,
+          cloneId, tenantId,
           professionalFidelity: dimensions.professional ?? 0,
           knowledgeFidelity: dimensions.knowledge ?? dimensions.reasoning ?? 0,
           skillFidelity: dimensions.behavioral ?? 0,
@@ -406,24 +501,16 @@ export class FidelityEngine {
           culturalFidelity: dimensions.cultural ?? 0,
           outcomeFidelity: dimensions.outcome ?? 0,
           aggregate,
-          notes: `Computed from ${evaluations.length} evaluation(s).`,
+          notes: `Computed from ${evaluations.length} completed evaluation(s). ${failedCount} failed evaluation(s) excluded.`,
         },
       })
     }
 
-    return { dimensions, aggregate, evidenceCount: evaluations.length }
+    return { dimensions, aggregate, evidenceCount: evaluations.length, failedCount }
   }
 }
 
-// Build the evaluator prompt — this is the INDEPENDENT evaluation. The
-// evaluator sees both the human response and the clone response, plus the
-// scenario and expected evidence. It evaluates per-dimension with excerpts
-// and alignment, NOT keyword matching.
-function buildEvaluatorPrompt(
-  scenario: any,
-  humanResp: any,
-  cloneResp: any,
-): string {
+function buildEvaluatorPrompt(scenario: any, humanResp: any, cloneResp: any): string {
   const prompt = JSON.parse(scenario.promptJson)
   const expectedEvidence = JSON.parse(scenario.expectedEvidenceJson)
   const dimensions = JSON.parse(scenario.evaluationDimensionsJson)
@@ -480,4 +567,13 @@ Return ONLY valid JSON:
     ...
   ]
 }`
+}
+
+function safeParse(s: string | null | undefined): Record<string, any> {
+  if (!s) return {}
+  try { return JSON.parse(s) } catch { return {} }
+}
+function safeParseArr(s: string | null | undefined): string[] {
+  if (!s) return []
+  try { const v = JSON.parse(s); return Array.isArray(v) ? v : [] } catch { return [] }
 }

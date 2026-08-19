@@ -16,6 +16,7 @@ import { ModelRouter, type RoutingSignal } from '@/lib/runtime/model-provider'
 import { CloneRuntime } from '@/lib/runtime/clone-runtime'
 import { classifyProvenance } from '@/lib/learning/provenance-classifier'
 import { detectConflicts } from '@/lib/learning/conflict-detector'
+import { createCloneStateSnapshot } from '@/lib/fidelity/snapshot'
 import type { Principal } from '@/lib/auth/request-context'
 
 export interface CaptureInput {
@@ -359,6 +360,10 @@ export class LearningPipeline {
         performanceImpact: candidate.scoreDelta,
         dependenciesJson: '{}',
         provenanceJson: JSON.stringify({ learningEventIds: JSON.parse(candidate.learningEventIdsJson) }),
+        // N1.2A: create an immutable snapshot of the clone's state at
+        // release time. Evaluation runs against this snapshot, not the
+        // current clone — this is how version comparisons are genuine.
+        stateSnapshotJson: await createCloneStateSnapshot(candidate.cloneId, candidate.candidateVersion),
       },
     })
 
