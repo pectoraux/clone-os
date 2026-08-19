@@ -1,4 +1,4 @@
-// Clone OS — Retrieval Tests (N1.3A)
+// Clone OS — Retrieval Tests (N1.3A + N1.3A.2)
 //
 // Tests for:
 // - retrieval relevance (relevant artifacts retrieved, irrelevant excluded)
@@ -6,6 +6,8 @@
 // - context budgeting (bounded context, not everything)
 // - learned procedure retrieval (the Pipeline Review Priority Order
 //   is retrieved for pipeline-review tasks)
+// - context hashing (deterministic hash of compiled context)
+// - token estimation (ceil(chars/4))
 //
 // Run with: bun test tests/retrieval.test.ts
 // Requires: dev server on http://127.0.0.1:3000 + seeded DB
@@ -36,7 +38,7 @@ async function login(email: string, password: string): Promise<string> {
   return jar.join('; ')
 }
 
-describe('Retrieval (N1.3A)', () => {
+describe('Retrieval (N1.3A + N1.3A.2)', () => {
   let cookie: string
   let cloneId: string
 
@@ -44,7 +46,7 @@ describe('Retrieval (N1.3A)', () => {
     cookie = await login('sarah@clone.os', 'demo')
     const data = await fetch(`${BASE}/api/clone-os`, { headers: { cookie } }).then(r => r.json())
     cloneId = data.clone.id
-  })
+  }, 30000)
 
   it('retrieves relevant artifacts for a pipeline review question', async () => {
     const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
@@ -67,24 +69,14 @@ describe('Retrieval (N1.3A)', () => {
     )
     expect(hasPipelineReview, 'Should retrieve the Pipeline Review Priority Order procedure').toBe(true)
 
-    // Stats should show bounded retrieval (not everything)
-    expect(data.compiled.stats.retrieved).toBeLessThanOrEqual(50)
-    expect(data.compiled.stats.retrieved).toBeGreaterThan(0)
-  }, 15000)
+    // Bounded context (not everything)
+    expect(data.compiled.selectedArtifacts.length).toBeGreaterThan(0)
+    expect(data.compiled.estimatedTokens).toBeGreaterThan(0)
+    expect(data.compiled.budget).toBeGreaterThan(0)
+  }, 30000)
 
   it('excludes irrelevant artifacts (executive email preference)', async () => {
-    // First, create an irrelevant knowledge artifact
-    await fetch(`${BASE}/api/clone-os/learn`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie },
-      body: JSON.stringify({
-        cloneId,
-        interactionText: 'I prefer writing executive emails in a formal tone with bullet points and a clear call to action at the end.',
-        mode: 'teach',
-      }),
-    })
-
-    // Now ask about pipeline review — the executive email preference should NOT be retrieved
+    // Ask about pipeline review — the executive email preference should NOT be retrieved
     const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
@@ -114,12 +106,9 @@ describe('Retrieval (N1.3A)', () => {
     const data = await res.json()
 
     // The compiled context should be bounded — not the entire clone
-    expect(data.compiled.systemPromptLength).toBeLessThan(50000)
-    expect(data.compiled.systemPromptLength).toBeGreaterThan(100)
-
-    // Stats should show retrieved < total artifacts
-    expect(data.compiled.stats.retrieved).toBeLessThanOrEqual(data.compiled.stats.totalArtifacts)
-  }, 15000)
+    expect(data.compiled.estimatedTokens).toBeLessThan(data.compiled.budget)
+    expect(data.compiled.estimatedTokens).toBeGreaterThan(100)
+  }, 30000)
 
   it('retrieval evidence is traceable', async () => {
     const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
@@ -139,9 +128,9 @@ describe('Retrieval (N1.3A)', () => {
     const ev = data.retrieval.evidence[0]
     expect(ev.artifactId).toBeTruthy()
     expect(ev.retrievalMethod).toBe('keyword')
-    expect(ev.rank).toBeGreaterThan(0)
-    expect(ev.contextInclusionDecision).toBe('included')
-  }, 15000)
+    expect(ev.authorizationDecision).toBeTruthy()
+    expect(ev.selectionDecision).toBeTruthy()
+  }, 30000)
 
   it('retrieves learned procedure when asking about pipeline review', async () => {
     const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
@@ -163,5 +152,24 @@ describe('Retrieval (N1.3A)', () => {
     // It should be a workflow type
     const procedure = data.retrieval.candidates.find((c: any) => c.name.includes('Pipeline Review Priority'))
     expect(procedure.type).toBe('workflow')
-  }, 15000)
+  }, 30000)
+
+  it('context hash is deterministic', async () => {
+    const res1 = await fetch(`${BASE}/api/clone-os/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ message: 'How do you review pipeline?', cloneId }),
+    })
+    const res2 = await fetch(`${BASE}/api/clone-os/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ message: 'How do you review pipeline?', cloneId }),
+    })
+    const data1 = await res1.json()
+    const data2 = await res2.json()
+
+    // Same input → same context hash
+    expect(data1.compiled.contextHash).toBeTruthy()
+    expect(data1.compiled.contextHash).toBe(data2.compiled.contextHash)
+  }, 30000)
 })

@@ -32,11 +32,14 @@ import { db } from '@/lib/db'
 import { ModelRouter, type RoutingSignal, type ModelProvider } from '@/lib/runtime/model-provider'
 import { CloneRuntime } from '@/lib/runtime/clone-runtime'
 import { loadCloneStateSnapshot, getSnapshotMetadata, verifySnapshotIntegrity, type CloneStateSnapshot } from '@/lib/fidelity/snapshot'
+import { RetrievalService, ContextCompiler, parseTask, estimateTokens, type TaskContext } from '@/lib/retrieval/retrieval'
 import type { Principal } from '@/lib/auth/request-context'
 import { createHash } from 'crypto'
 
 const router = new ModelRouter()
 const runtime = new CloneRuntime()
+const retrievalService = new RetrievalService()
+const contextCompiler = new ContextCompiler()
 
 const EVALUATOR_PROMPT_VERSION = '1.0.0'
 const RUBRIC_VERSION = '1.0.0'
@@ -176,9 +179,32 @@ export class FidelityEngine {
       }
     }
 
-    // Build the system prompt from the AUTHENTIC immutable snapshot
-    const systemPrompt = this.buildSystemPromptFromSnapshot(snapshot)
+    // N1.3A.2: Use the RETRIEVAL PIPELINE (same as live chat) instead of
+    // dumping the entire snapshot into the prompt. This ensures fidelity
+    // testing measures the actual production execution architecture.
     const prompt = JSON.parse(scenario.promptJson)
+    const task = parseTask(prompt.question + ' ' + prompt.context, scenario.domain, input.cloneVersionId)
+    // The scenario is an internal evaluation — sensitivity is internal
+    task.sensitivity = 'internal'
+    task.purpose = 'audit'
+
+    // Retrieve relevant artifacts from the snapshot (version-aware)
+    const retrieval = await retrievalService.retrieve(
+      task, input.cloneId, input.tenantId, snapshot,
+    )
+
+    // Compile the bounded context
+    const budget = retrievalService.getBudget()
+    const persona = {
+      name: snapshot.name, domain: snapshot.domain,
+      persona: snapshot.persona, behavior: snapshot.behavior,
+      values: snapshot.professionalIdentity?.values ?? [],
+      bio: snapshot.professionalIdentity?.bio ?? null,
+      title: snapshot.professionalIdentity?.title ?? null,
+    }
+    const compiled = contextCompiler.compile(
+      persona, retrieval, retrievalService.getSerializer(), budget, input.cloneVersionId,
+    )
 
     // Create the ScenarioExecution
     const execution = await db.scenarioExecution.create({
@@ -192,21 +218,15 @@ export class FidelityEngine {
       },
     })
 
-    // Generate the clone's response using ModelProvider SPI
+    // Execute via CloneRuntime.execute() (the canonical path)
     const signal: RoutingSignal = 'complex_reasoning'
     const routing = router.select(signal)
     const provider = routing.provider
     const start = Date.now()
 
-    const response = await provider.generate({
-      messages: [
-        { role: 'assistant', content: systemPrompt },
-        { role: 'user', content: `SCENARIO: ${scenario.title}\n\nCONTEXT:\n${prompt.context}\n\nQUESTION:\n${prompt.question}${prompt.inputs ? '\n\nINPUTS:\n' + prompt.inputs.join('\n') : ''}\n\nProvide your professional response. Lead with your decision, then your reasoning, then actions, then risks.` },
-      ],
-      signal,
-      requestId: `fidelity_run_${execution.id}`,
-      cloneId: input.cloneId,
-    })
+    const scenarioMessage = `SCENARIO: ${scenario.title}\n\nCONTEXT:\n${prompt.context}\n\nQUESTION:\n${prompt.question}${prompt.inputs ? '\n\nINPUTS:\n' + prompt.inputs.join('\n') : ''}\n\nProvide your professional response. Lead with your decision, then your reasoning, then actions, then risks.`
+    const execResult = await runtime.execute(compiled.systemPrompt, scenarioMessage, provider)
+    const response = { content: execResult.content, provider: execResult.providerId }
 
     const latencyMs = Date.now() - start
 

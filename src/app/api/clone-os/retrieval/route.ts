@@ -54,18 +54,16 @@ export async function POST(req: NextRequest) {
 
   // Compile the bounded context
   const compiler = new ContextCompiler()
+  const budget = retrievalService.getBudget()
   const persona = {
     name: clone.name, domain: clone.domain,
     persona: JSON.parse(clone.personaJson || '{}'),
-    personality: JSON.parse(clone.personalityJson || '{}'),
-    preferences: JSON.parse(clone.preferencesJson || '{}'),
     behavior: JSON.parse(clone.behaviorJson || '{}'),
     values: JSON.parse(clone.professionalIdentity?.valuesJson || '[]'),
-    culture: JSON.parse(clone.professionalIdentity?.cultureJson || '{}'),
     bio: clone.professionalIdentity?.bio ?? null,
     title: clone.professionalIdentity?.title ?? null,
   }
-  const compiled = compiler.compile(persona, retrieval)
+  const compiled = compiler.compile(persona, retrieval, retrievalService.getSerializer(), budget, cloneVersionId)
 
   return NextResponse.json({
     task,
@@ -83,13 +81,18 @@ export async function POST(req: NextRequest) {
         type: c.artifactType,
         name: c.name,
         reason: c.reason,
+        exclusionType: c.exclusionType,
       })),
-      evidence: compiled.evidence,
+      evidence: compiled.retrievalEvidence,
     },
     compiled: {
       systemPromptLength: compiled.systemPrompt.length,
       systemPromptPreview: compiled.systemPrompt.slice(0, 500) + (compiled.systemPrompt.length > 500 ? '...' : ''),
-      stats: compiled.stats,
+      estimatedTokens: compiled.estimatedTokens,
+      budget: compiled.budget.maxTokens,
+      contextHash: compiled.contextHash.slice(0, 16),
+      selectedArtifacts: compiled.selectedArtifacts,
+      excludedArtifacts: compiled.excludedArtifacts,
     },
     usedSnapshot: !!snapshot,
     note: 'The clone received only the relevant subset. The persistent state is the source of truth; the retrieval index is derived.',

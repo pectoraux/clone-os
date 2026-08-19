@@ -188,6 +188,34 @@ export class CloneRuntime {
     parts.push('- Respect data sensitivity: never expose restricted/client-locked knowledge outside its scope.')
     return parts.join('\n')
   }
+
+  // N1.3A.2: Canonical execution path. Takes an already-compiled
+  // ExecutionContext (from ContextCompiler) + a user message + a
+  // ModelProvider → produces a response. This is the target runtime
+  // boundary: RetrievalService → ContextCompiler → CloneRuntime.execute().
+  //
+  // The old buildContext() + toSystemPrompt() path is LEGACY — it loads
+  // the entire clone into the prompt. New executions should use execute()
+  // with a CompiledExecutionContext from the retrieval pipeline.
+  async execute(
+    systemPrompt: string,
+    userMessage: string,
+    provider: any,
+  ): Promise<{ content: string; providerId: string; latencyMs: number }> {
+    const start = Date.now()
+    const response = await provider.generate({
+      messages: [
+        { role: 'assistant', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      signal: 'general_chat',
+    })
+    return {
+      content: response.content,
+      providerId: response.provider,
+      latencyMs: Date.now() - start,
+    }
+  }
 }
 
 function safeParse(s: string | null | undefined): Record<string, any> {
