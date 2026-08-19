@@ -1,11 +1,20 @@
 // Clone OS — Training Studio action endpoint
-// POST /api/clone-os/train
-// Creates a TrainingSession (ADR-0007), updates touched skills, emits a
-// TrainingCompleted + skill-touched events, optionally bumps a new clone
-// version when the user "releases" the training.
+//
+// N0.1: cloneId is resolved from the authenticated session, NOT the request
+//   body. The caller can request a training operation; the server decides
+//   whether that caller may perform it (requireCloneOwner).
+// N0.9: training does NOT mutate clone.aggregateScore in place. It creates
+//   a TrainingSession, emits events, and (in the real learning pipeline)
+//   would produce a CloneVersionCandidate. The simulated aggregate bump is
+//   gone — see HARDENING.md.
+// N0.7: this is a PROTOTYPE ADAPTER / SIMULATED TRAINING BACKEND. It is
+//   clearly marked as simulated in the response. Real learning pipeline is
+//   tracked under N0.7 in docs/HARDENING.md.
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getRequestContext, requireCloneOwner, requireAuthenticated } from "@/lib/auth/server";
+import type { RequestContext } from "@/lib/auth/request-context";
 import { DOMAIN_EVENTS } from "@/lib/clone-os/events";
 
 export const dynamic = "force-dynamic";
@@ -14,59 +23,73 @@ function j(o: unknown): string {
   return JSON.stringify(o);
 }
 
-// Demo: pick a deterministic-ish response per training mode (the dashboard
-// shows the loop end-to-end; the actual LLM call happens in the live-chat
-// mini-service, not here).
+// PROTOTYPE ADAPTER — this is NOT a real learning system. It records the
+// training session for audit purposes and emits domain events, but the
+// "output" is a canned response keyed on mode. Real learning is N0.7.
 function simulatedOutput(mode: string): Record<string, unknown> {
   switch (mode) {
     case "teaching":
-      return { captured: "knowledge_added", skillsTouched: 1 };
+      return { captured: "knowledge_added", skillsTouched: 1, simulated: true };
     case "demonstration":
-      return { captured: "demonstration_recorded", stepsObserved: 5 };
+      return { captured: "demonstration_recorded", stepsObserved: 5, simulated: true };
     case "correction":
-      return { applied: "behavior_patched", divergenceBefore: 0.34, divergenceAfter: 0.12 };
+      return { applied: "behavior_patched", divergenceBefore: 0.34, divergenceAfter: 0.12, simulated: true };
     case "shadowing":
-      return { captured: "workflow_observed", workflowRef: "weekly-operating-review" };
+      return { captured: "workflow_observed", workflowRef: "weekly-operating-review", simulated: true };
     case "assisted":
-      return { proposal: "approve", approved: true };
+      return { proposal: "approve", approved: true, simulated: true };
     case "delegated":
-      return { executed: true, withinPolicy: true };
+      return { executed: true, withinPolicy: true, simulated: true };
     case "simulation":
-      return { surfacedFailure: "over-weighting-commit-deal", severity: 0.18 };
+      return { surfacedFailure: "over-weighting-commit-deal", severity: 0.18, simulated: true };
     case "adversarial":
-      return { divergence: 0.21, edgeCaseSurfaced: "conflicting-ICP-signals" };
+      return { divergence: 0.21, edgeCaseSurfaced: "conflicting-ICP-signals", simulated: true };
     case "real_world":
-      return { outcomeMet: true, humanIntervention: 0.11 };
+      return { outcomeMet: true, humanIntervention: 0.11, simulated: true };
     default:
-      return { captured: true };
+      return { captured: true, simulated: true };
   }
 }
 
 export async function POST(req: NextRequest) {
+  const ctx = await getRequestContext();
+
+  // N0.1: Auth — any authenticated user can request a training session, but
+  // they must own (or be admin/demo on) the clone they're training.
+  const authCheck = requireAuthenticated(ctx);
+  if (!authCheck.ok) {
+    return NextResponse.json({ error: authCheck.reason }, { status: authCheck.status });
+  }
+
   const body = await req.json();
-  const { cloneId, mode, stage, input, ownerId, tenantId } = body as {
-    cloneId: string;
+  const { cloneId, mode, stage, input } = body as {
+    cloneId?: string;
     mode: string;
     stage?: string;
     input?: Record<string, unknown>;
-    ownerId?: string;
-    tenantId?: string;
   };
 
   if (!cloneId || !mode) {
     return NextResponse.json({ error: "cloneId and mode are required" }, { status: 400 });
   }
 
+  // N0.1: authorize that this principal may operate on this clone.
+  const ownerCheck = await requireCloneOwner(ctx, cloneId, db);
+  if (!ownerCheck.ok) {
+    return NextResponse.json({ error: ownerCheck.reason }, { status: ownerCheck.status });
+  }
+
   const clone = await db.clone.findUnique({
     where: { id: cloneId },
-    include: { owner: true },
+    include: { owner: true, currentVersion: true },
   });
   if (!clone) {
     return NextResponse.json({ error: "clone not found" }, { status: 404 });
   }
 
-  const effectiveTenantId = tenantId ?? clone.tenantId;
-  const effectiveOwnerId = ownerId ?? clone.ownerId;
+  // Resolve ownerId/tenantId from the authenticated context, NEVER from body.
+  const effectiveTenantId = ctx.tenantId ?? clone.tenantId;
+  const effectiveOwnerId = ctx.principal!.id;
 
   const output = simulatedOutput(mode);
   const session = await db.trainingSession.create({
@@ -75,46 +98,41 @@ export async function POST(req: NextRequest) {
       tenantId: effectiveTenantId,
       ownerId: effectiveOwnerId,
       mode,
-      stage: stage ?? mode === "real_world" ? "measure" : "train",
+      stage: stage ?? (mode === "real_world" ? "measure" : "train"),
       inputJson: j(input ?? { source: "dashboard" }),
       outputJson: j(output),
       skillsTouchedJson: j(["pipeline_hygiene", "forecasting"]),
       status: "completed",
       completedAt: new Date(),
       durationMs: 60_000 + Math.floor(Math.random() * 240_000),
-      notes: `Dashboard-initiated ${mode} training`,
+      notes: `Dashboard-initiated ${mode} training (SIMULATED — see HARDENING.md N0.7)`,
     },
   });
 
   // Domain events (ADR-0048)
-  await db.domainEvent.create({
-    data: {
-      tenantId: effectiveTenantId,
-      cloneId,
-      type: "TrainingStarted" as any,
-      payloadJson: j({ mode, stage: session.stage, sessionId: session.id }),
-    },
+  await db.domainEvent.createMany({
+    data: [
+      {
+        tenantId: effectiveTenantId,
+        cloneId,
+        type: "TrainingStarted",
+        payloadJson: j({ mode, stage: session.stage, sessionId: session.id, requestId: ctx.requestId }),
+      },
+      {
+        tenantId: effectiveTenantId,
+        cloneId,
+        type: "TrainingCompleted",
+        payloadJson: j({ mode, sessionId: session.id, output, simulated: true }),
+      },
+      ...(mode === "demonstration"
+        ? [{ tenantId: effectiveTenantId, cloneId, type: "DemonstrationCaptured" as any, payloadJson: j({ sessionId: session.id }) }]
+        : []),
+      ...(mode === "correction"
+        ? [{ tenantId: effectiveTenantId, cloneId, type: "CorrectionCaptured" as any, payloadJson: j({ sessionId: session.id, ...output }) }]
+        : []),
+    ],
   });
-  await db.domainEvent.create({
-    data: {
-      tenantId: effectiveTenantId,
-      cloneId,
-      type: "TrainingCompleted" as any,
-      payloadJson: j({ mode, sessionId: session.id, output }),
-    },
-  });
-  if (mode === "demonstration") {
-    await db.domainEvent.create({
-      data: { tenantId: effectiveTenantId, cloneId, type: "DemonstrationCaptured" as any, payloadJson: j({ sessionId: session.id }) },
-    });
-  }
-  if (mode === "correction") {
-    await db.domainEvent.create({
-      data: { tenantId: effectiveTenantId, cloneId, type: "CorrectionCaptured" as any, payloadJson: j({ sessionId: session.id, ...output }) },
-    });
-  }
 
-  // Audit log
   await db.auditLog.create({
     data: {
       tenantId: effectiveTenantId,
@@ -123,18 +141,22 @@ export async function POST(req: NextRequest) {
       action: "training.session.completed",
       resourceType: "training_session",
       resourceId: session.id,
-      detailsJson: j({ mode, stage: session.stage }),
+      detailsJson: j({ mode, stage: session.stage, requestId: ctx.requestId, simulated: true }),
     },
   });
 
-  // Bump the aggregate slightly to show the loop is alive
-  const newAggregate = Math.min(99.9, (clone.aggregateScore ?? 80) + 0.1);
-  await db.clone.update({ where: { id: cloneId }, data: { aggregateScore: newAggregate, updatedAt: new Date() } });
+  // N0.9: NO direct mutation of clone.aggregateScore. Training produces a
+  // session record + events; the aggregate is recomputed only when a new
+  // CloneVersion is released (after evaluation gates the release). The old
+  // `clone.aggregateScore + 0.1` bump is removed because it violated the
+  // versioning principle (never silently mutate production intelligence).
 
   return NextResponse.json({
     ok: true,
     session,
     events: ["TrainingStarted", "TrainingCompleted", mode === "demonstration" ? "DemonstrationCaptured" : "", mode === "correction" ? "CorrectionCaptured" : ""].filter(Boolean),
-    newAggregate,
+    // Explicitly tell the caller this is a simulated training output.
+    simulated: true,
+    note: "Prototype training adapter — see HARDENING.md (N0.7). No production clone state was mutated.",
   });
 }

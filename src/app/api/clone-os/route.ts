@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getRequestContext, resolveAccessibleClone } from "@/lib/auth/server";
 import { computeAggregate, type CloneScoreDimensions } from "@/lib/clone-os/clone-score";
 import { MODEL_PROVIDERS, ROUTING_RULES, type RoutingSignal } from "@/lib/clone-os/model-abstraction";
 import { AUTONOMY_LEVELS, CAPABILITY_CATALOG } from "@/lib/clone-os/autonomy";
@@ -29,15 +30,38 @@ function jparse<T>(s: string | null, fallback: T): T {
 }
 
 // GET /api/clone-os — full platform state for the dashboard
+//
+// N0.1 + N0.2: tenant and clone are resolved from the authenticated session,
+// NOT from the request body. Unauthenticated callers get the public demo
+// clone (visibility: marketplace) only. All tenant-scoped queries filter by
+// the principal's tenantId. Marketplace listings are intentionally global
+// (that's the marketplace's purpose) but outcomes are tenant-scoped.
 export async function GET(_req: NextRequest) {
-  // Resolve Sarah's personal tenant (the deep MVP vertical)
-  const tenant = await db.tenant.findUnique({ where: { slug: "sarah-personal" } });
+  const ctx = await getRequestContext();
+
+  // Resolve the accessible clone.
+  // - Authenticated principal: their tenant's sarah-revops clone (if present),
+  //   else fall back to the marketplace-visible demo clone.
+  // - Unauthenticated: only the marketplace-visible demo clone.
+  const slug = "sarah-revops";
+  const accessible = await resolveAccessibleClone(ctx, slug);
+  if (!accessible) {
+    return NextResponse.json(
+      { error: "Clone not found or not accessible." },
+      { status: 404 },
+    );
+  }
+
+  // The effective tenant for scoping reads. For unauthenticated callers viewing
+  // the demo clone, we use the clone's owning tenant (read-only).
+  const effectiveTenantId = ctx.tenantId ?? accessible.tenantId;
+  const tenant = await db.tenant.findUnique({ where: { id: effectiveTenantId } });
   if (!tenant) {
-    return NextResponse.json({ error: "Tenant not seeded. Run `bun run scripts/seed.ts`." }, { status: 500 });
+    return NextResponse.json({ error: "Tenant not found." }, { status: 404 });
   }
 
   const clone = await db.clone.findFirst({
-    where: { tenantId: tenant.id, slug: "sarah-revops" },
+    where: { id: accessible.id },
     include: {
       professionalIdentity: { include: { user: true } },
       currentVersion: true,
@@ -67,10 +91,16 @@ export async function GET(_req: NextRequest) {
       db.extension.findMany({ where: { tenantId: tenant.id } }),
       db.tool.findMany({ where: { tenantId: tenant.id } }),
       db.contract.findMany({ where: { cloneId: clone.id }, orderBy: { createdAt: "desc" } }),
-      db.outcome.findMany({ orderBy: { recordedAt: "desc" } }),
+      // N0.2 fix: outcomes are tenant-scoped, not global.
+      db.outcome.findMany({ where: { tenantId: tenant.id }, orderBy: { recordedAt: "desc" } }),
       db.reputation.findUnique({ where: { cloneId: clone.id } }),
       db.license.findMany({ where: { cloneId: clone.id } }),
-      db.marketplaceListing.findMany({ orderBy: { publishedAt: "desc" } }),
+      // Marketplace is intentionally global (cross-tenant listings), but only
+      // published listings are returned to non-owners.
+      db.marketplaceListing.findMany({
+        where: { status: { in: ["listed", "hired"] } },
+        orderBy: { publishedAt: "desc" },
+      }),
       db.domainEvent.findMany({ where: { tenantId: tenant.id }, orderBy: { createdAt: "desc" }, take: 30 }),
       db.auditLog.findMany({ where: { tenantId: tenant.id }, orderBy: { createdAt: "desc" }, take: 30 }),
       db.expertise.findMany({ where: { cloneId: clone.id } }),

@@ -1,6 +1,17 @@
 // Clone OS — Intent-based hiring (ADR-0011, ADR-0029)
+//
 // POST /api/clone-os/marketplace
 // Body: { intent: string }  -> returns capability decomposition + matched listings.
+//
+// N0.0 (HARDENING): this is a BASELINE MATCHER / PROTOTYPE. It is a keyword
+//   parser, not the future capability matching engine. The future engine
+//   needs: intent → capability extraction → skill requirements → outcome
+//   requirements → environment requirements → security requirements →
+//   certification requirements → availability → cost → reputation →
+//   historical outcome similarity → ranking. See HARDENING.md (marketplace).
+//
+// N0.1: intent matching is a public read operation — no auth required.
+//   Anyone can express an outcome and see what's available on the marketplace.
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
@@ -127,5 +138,9 @@ export async function POST(req: NextRequest) {
     requiredCapabilities: capMeta,
     rationale,
     matches: scored,
+    // Explicitly mark this as a baseline/prototype matcher.
+    simulated: true,
+    matcherType: "baseline-keyword",
+    note: "Prototype capability matcher — keyword parser. See HARDENING.md (marketplace). The future engine will consider skill requirements, outcome requirements, environment requirements, security requirements, certification requirements, availability, cost, reputation, and historical outcome similarity.",
   });
 }

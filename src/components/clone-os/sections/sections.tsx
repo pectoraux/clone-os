@@ -1004,8 +1004,21 @@ export function LiveChatSection() {
       ? io(socketUrl, socketOpts)
       : io('/?XTransformPort=3003', socketOpts)
     setSocket(s)
-    s.on('connect', () => {
-      s.emit('clone:join', { cloneId: data.clone.id })
+    s.on('connect', async () => {
+      // N0.1: fetch a short-lived socket token from the platform (if authenticated).
+      // The mini-service validates the token server-to-server. Unauthenticated
+      // users can still join the demo (marketplace-visible) clone.
+      let sessionToken: string | undefined
+      try {
+        const res = await fetch('/api/auth/socket-token', { method: 'POST' })
+        if (res.ok) {
+          const data = await res.json()
+          sessionToken = data.token
+        }
+      } catch {
+        // Unauthenticated — proceed without token (demo clone only)
+      }
+      s.emit('clone:join', { cloneId: data.clone.id, sessionToken })
     })
     s.on('connect_error', (e: any) => console.error('[LiveChat] connect_error', e?.message, e))
     s.on('disconnect', (r: string) => console.warn('[LiveChat] disconnected', r))
