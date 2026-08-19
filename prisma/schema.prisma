@@ -199,6 +199,11 @@ model Clone {
   learningEvents     LearningEvent[]
   candidateArtifacts CandidateArtifact[]
   versionCandidates  CloneVersionCandidate[]
+  evaluationScenarios EvaluationScenario[]
+  humanResponses      HumanResponse[]
+  cloneResponses     CloneResponse[]
+  scenarioExecutions  ScenarioExecution[]
+  fidelityEvaluations FidelityEvaluation[]
   evaluations       Evaluation[]
   scores             CloneScore[]
   divergences       FidelityDivergence[]
@@ -512,6 +517,167 @@ model CloneVersionCandidate {
   releasedVersionId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// ============================================================
+// N1.2 — Real Fidelity Engine (Evaluation Scenario + Paired Comparison)
+// ============================================================
+
+// An EvaluationScenario is a controlled professional situation. It is NOT
+// just a prompt — it carries domain, difficulty, required skills, evaluation
+// dimensions, and expected evidence. The same scenario is run against both
+// the human (gold data) and the clone, enabling paired comparison.
+model EvaluationScenario {
+  id              String   @id @default(cuid())
+  cloneId         String?
+  clone           Clone?   @relation(fields: [cloneId], references: [id])
+  tenantId        String
+  // The controlled professional situation
+  title           String
+  description     String
+  domain          String   // e.g., "Revenue Operations"
+  difficulty      String   // low | medium | high | adversarial
+  // The structured prompt that goes to both human and clone
+  promptJson      String   // JSON: { context, question, inputs }
+  // Required skills for this scenario
+  requiredSkillsJson String  // JSON: array of skill names
+  // Which fidelity dimensions this scenario evaluates
+  evaluationDimensionsJson String  // JSON: array of dimension keys
+  // Expected evidence (what a good answer should contain)
+  expectedEvidenceJson String  // JSON: { keyPoints, decisionCriteria, riskFactors }
+  // Scenario source (for the Clone Evaluation Dataset)
+  source          String   @default("user_created") // public | user_created | company | marketplace | benchmark
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  // Relations
+  executions      ScenarioExecution[]
+  humanResponses  HumanResponse[]
+  cloneResponses  CloneResponse[]
+}
+
+// HumanResponse is gold data — the human is the reference model. The
+// clone's fidelity is measured against these responses. The response is
+// structured (decision, reasoning, actions, priorities, riskTolerance,
+// communication) so the evaluator can compare per-dimension, not just
+// keyword overlap.
+model HumanResponse {
+  id              String   @id @default(cuid())
+  scenarioId      String
+  scenario        EvaluationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  tenantId        String
+  // The human's full answer (raw text)
+  content         String
+  authorId        String
+  // Structured extraction of the response (for per-dimension comparison)
+  decision        String   // the key decision/recommendation
+  reasoning      String   // the reasoning behind the decision
+  actionsJson     String   // JSON: array of actions
+  prioritiesJson  String   // JSON: array of priorities
+  riskTolerance   Float    @default(0.5) // 0..1
+  communication   String   // style notes
+  // Provenance
+  provenanceJson  String   // JSON: { source, sensitivity, portability }
+  // Metadata
+  isGoldData      Boolean  @default(true)
+  createdAt       DateTime @default(now())
+}
+
+// CloneResponse is the clone's answer to a scenario, linked to a specific
+// clone version. This enables paired comparison: the same scenario run
+// against v1.4.0 and v1.5.0 produces different CloneResponses, and the
+// FidelityEvaluation compares each to the HumanResponse.
+model CloneResponse {
+  id              String   @id @default(cuid())
+  scenarioId      String
+  scenario        EvaluationScenario @relation(fields: [scenarioId], references: [id])
+  executionId     String   @unique
+  execution       ScenarioExecution @relation(fields: [executionId], references: [id])
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  cloneVersionId  String   // which version of the clone was evaluated
+  tenantId        String
+  // The clone's full answer (raw LLM output)
+  content         String
+  // Structured extraction (done by the FidelityEngine's evaluator)
+  decision        String?
+  reasoning      String?
+  actionsJson     String?
+  prioritiesJson  String?
+  riskTolerance   Float?
+  communication   String?
+  // Metadata
+  modelProvider   String   // which model was used to generate this response
+  modelLatencyMs  Int
+  createdAt       DateTime @default(now())
+}
+
+// ScenarioExecution tracks a single run of a scenario against a specific
+// clone version. It links the clone response to the evaluation result.
+model ScenarioExecution {
+  id              String   @id @default(cuid())
+  scenarioId      String
+  scenario        EvaluationScenario @relation(fields: [scenarioId], references: [id])
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  cloneVersionId  String   // which clone version was evaluated
+  tenantId        String
+  // The human response used for comparison
+  humanResponseId String?
+  // Status
+  status          String   @default("pending") // pending | running | completed | failed
+  // The clone response (one-to-one)
+  cloneResponse   CloneResponse?
+  // The evaluation result (one-to-one)
+  evaluation      FidelityEvaluation?
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+}
+
+// FidelityEvaluation is the comparison result. It uses an INDEPENDENT
+// evaluator model (not the same model that generated the clone response)
+// to compare the clone's response to the human's response, per dimension.
+// Each dimension score is backed by evidence (excerpts + alignment).
+model FidelityEvaluation {
+  id              String   @id @default(cuid())
+  executionId     String   @unique
+  execution       ScenarioExecution @relation(fields: [executionId], references: [id])
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  cloneVersionId  String
+  tenantId        String
+  // The comparison result
+  agreementRate   Float    @default(0) // overall agreement 0..1
+  headlineSummary String   // e.g., "Clone agrees with human 91% of the time"
+  // Per-dimension scores (one-to-many)
+  dimensionScores FidelityDimensionScore[]
+  // Evaluation metadata — the evaluator is a SEPARATE model call from the
+  // clone response generation. This prevents the LLM from grading itself.
+  evaluatorModel  String   // which model was used for evaluation
+  evaluatorLatencyMs Int
+  // The full evaluation evidence (rubric, metrics, comparison details)
+  evidenceJson    String   // JSON: { rubric, perDimensionComparisons, overallAssessment }
+  createdAt       DateTime @default(now())
+}
+
+// FidelityDimensionScore is a single dimension's score, backed by evidence.
+// The user can drill down: "Why is my Decision Fidelity 92.1%?" → see the
+// human excerpt, clone excerpt, alignment, and the evaluator's reasoning.
+model FidelityDimensionScore {
+  id              String   @id @default(cuid())
+  evaluationId    String
+  evaluation      FidelityEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  dimension       String   // decision | reasoning | behavioral | communication | personality | cultural | outcome
+  score           Float    @default(0) // 0..100
+  // The evidence for this score
+  evidence        String   // what the evaluator found
+  // Comparison excerpts
+  humanExcerpt    String   // the relevant excerpt from the human's response
+  cloneExcerpt    String   // the relevant excerpt from the clone's response
+  alignment       String   @default("partial") // aligned | partial | misaligned
+  createdAt       DateTime @default(now())
 }
 
 // ============================================================

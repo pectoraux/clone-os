@@ -263,3 +263,37 @@ export function useReleaseCandidate() {
     },
   })
 }
+
+// N1.2 — Fidelity Engine hooks
+
+export function useFidelityData(cloneId: string | undefined) {
+  return useQuery({
+    queryKey: ['clone-os-fidelity', cloneId],
+    queryFn: async () => {
+      if (!cloneId) return null
+      const res = await fetch(`/api/clone-os/fidelity?cloneId=${cloneId}`)
+      if (!res.ok) throw new Error(`Failed to load fidelity data (${res.status})`)
+      return res.json()
+    },
+    enabled: !!cloneId,
+  })
+}
+
+export function useFidelityAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { action: string; [key: string]: any }) => {
+      const res = await fetch('/api/clone-os/fidelity', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(vars),
+      })
+      if (!res.ok) throw new Error(`Fidelity action failed (${res.status})`)
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clone-os-fidelity'] })
+      qc.invalidateQueries({ queryKey: ['clone-os'] })
+    },
+  })
+}

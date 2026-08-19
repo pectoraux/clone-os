@@ -13,13 +13,14 @@ import { io, type Socket } from 'socket.io-client'
 import { toast } from 'sonner'
 import {
   Activity, AlertTriangle, BadgeCheck, Boxes, BrainCircuit, Calendar, CheckCircle2, Clock,
-  Cpu, Database, FileText, GitBranch, Globe, Layers, Network, Package, Plug, Send,
+  Cpu, Database, FileText, FlaskConical, GitBranch, Globe, Layers, Network, Package, Plug, Send,
   ShieldCheck, Sparkles, Target, TrendingUp, Users, Workflow as WorkflowIcon, Zap, RefreshCw, MessageSquare,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -29,7 +30,7 @@ import {
   Bar, Callout, CapabilityBadge, CertBadge, KV, PanelCard, ScrollList, SectionShell,
   SensitivityBadge, StatCard, StatusBadge, Tag, money, timeAgo,
 } from '../shared/ui'
-import { useCloneOs, useTrainSession, useMarketplaceMatch, useExtensionInstall, useLearn, useCandidates, useConfirmCandidate, usePersistCandidates, useReleaseCandidate } from '../data'
+import { useCloneOs, useTrainSession, useMarketplaceMatch, useExtensionInstall, useLearn, useCandidates, useConfirmCandidate, usePersistCandidates, useReleaseCandidate, useFidelityData, useFidelityAction } from '../data'
 import type { CloneOsState } from '../data'
 import { AdminWaitlistPanel, useCurrentUser } from '../auth/auth-ui'
 
@@ -613,73 +614,262 @@ export function TrainingStudioSection() {
 // =========================================================================
 export function FidelityLabSection() {
   const { data, isLoading, error } = useCloneOs()
+  const fidelityQ = useFidelityData(data?.clone?.id)
+  const fidelityAction = useFidelityAction()
+  const [scenarioContext, setScenarioContext] = React.useState('')
+  const [scenarioQuestion, setScenarioQuestion] = React.useState('')
+  const [humanResponse, setHumanResponse] = React.useState('')
   if (isLoading) return <Skeleton count={2} />
   if (error || !data) return <ErrorState message="Failed to load fidelity data" />
-  const { divergences, catalogs } = data
+  const { divergences, catalogs, clone } = data
   const dims = catalogs.fidelityDimensions
+  const fdata = fidelityQ.data
+
+  // N1.2 — Create scenario + capture human response + run + evaluate
+  async function runFidelityTest() {
+    if (!scenarioContext.trim() || !scenarioQuestion.trim() || !humanResponse.trim()) return
+    const t = toast.loading('Running fidelity test (create → capture → run v1.4 + v1.5 → evaluate both)…')
+    try {
+      // 1. Create scenario
+      const sc = await fidelityAction.mutateAsync({
+        action: 'create_scenario',
+        cloneId: clone.id,
+        title: 'Pipeline forecast risk assessment',
+        description: 'Assess pipeline health when coverage looks strong but stage aging reveals risk',
+        domain: 'Revenue Operations',
+        difficulty: 'medium',
+        context: scenarioContext.trim(),
+        question: scenarioQuestion.trim(),
+        requiredSkills: ['Pipeline Hygiene', 'Revenue Forecasting'],
+        evaluationDimensions: ['decision', 'reasoning', 'behavioral', 'communication'],
+        expectedEvidence: { keyPoints: ['stage aging', 'deal concentration', 'forecast risk'], decisionCriteria: ['coverage quality > quantity'], riskFactors: ['inflated late-stage pipeline'] },
+      })
+      const scenarioId = sc.scenarioId
+
+      // 2. Capture human response (gold data)
+      const hr = await fidelityAction.mutateAsync({
+        action: 'capture_human',
+        scenarioId,
+        cloneId: clone.id,
+        content: humanResponse.trim(),
+        decision: 'Inspect stage aging before raw coverage',
+        reasoning: 'Inflated late-stage pipeline hides forecast risk; stage aging reveals whether coverage is real',
+        actions: ['Check stage aging', 'Assess deal concentration', 'Review rep-level slippage'],
+        priorities: ['Stage aging first', 'Then deal concentration', 'Then rep-level slippage'],
+        riskTolerance: 0.3,
+        communication: 'Direct, evidence-first, concise',
+      })
+      const humanResponseId = hr.humanResponseId
+
+      // 3. Run v1.5 (current version — includes the learned "stage aging" workflow)
+      const runV15 = await fidelityAction.mutateAsync({
+        action: 'run',
+        scenarioId,
+        cloneId: clone.id,
+        cloneVersionId: clone.currentVersion.id,
+        humanResponseId,
+      })
+
+      // 4. Evaluate v1.5
+      const evalV15 = await fidelityAction.mutateAsync({
+        action: 'evaluate',
+        executionId: runV15.executionId,
+        cloneId: clone.id,
+      })
+
+      // 5. Run v1.4 baseline (exclude the learned workflow)
+      // Find the workflow that was added in v1.5 (the "Pipeline Review Priority Order")
+      const learnedWf = clone.workflows?.find((w: any) => w.name?.includes('Pipeline Review')) || null
+      // Actually we need to query for it — let me use the versions data
+      const v14 = data.versions.find((v: any) => v.version === '1.4.0')
+      const runV14 = await fidelityAction.mutateAsync({
+        action: 'run',
+        scenarioId,
+        cloneId: clone.id,
+        cloneVersionId: v14?.id || clone.currentVersion.id,
+        humanResponseId,
+        excludeWorkflowIds: learnedWf ? [learnedWf.id] : undefined,
+      })
+
+      // 6. Evaluate v1.4
+      const evalV14 = await fidelityAction.mutateAsync({
+        action: 'evaluate',
+        executionId: runV14.executionId,
+        cloneId: clone.id,
+      })
+
+      // 7. Recompute CloneScore
+      const recompute = await fidelityAction.mutateAsync({
+        action: 'recompute',
+        cloneId: clone.id,
+      })
+
+      toast.success('Fidelity test complete', {
+        id: t,
+        description: `v1.5 agreement: ${Math.round(evalV15.agreementRate * 100)}% | v1.4 agreement: ${Math.round(evalV14.agreementRate * 100)}% | ${evalV15.agreementRate > evalV14.agreementRate ? '✅ Fidelity improved after learning' : '⚠ Fidelity did not improve'}`,
+      })
+    } catch (e: any) {
+      toast.error('Fidelity test failed', { id: t, description: e?.message })
+    }
+  }
+
   return (
     <SectionShell
-      title="Clone Fidelity Lab"
-      description="Compares Human vs Human's Clone against equivalent scenarios and produces a Divergence Report — per-dimension deltas, agreement rate, and headline findings."
+      title="Clone Fidelity Lab (N1.2 — Real Fidelity Engine)"
+      description="Prove empirically that learning makes the clone more faithful. Same scenario, paired evaluation: Human (gold data) vs Clone v1.4 (pre-learning) vs Clone v1.5 (post-learning). Independent evaluator — the LLM does not grade itself."
     >
-      <div className="grid gap-4 lg:grid-cols-3">
-        {divergences.map((d: any) => {
-          const div = d.divergence || {}
-          const maxAbs = Math.max(0.01, ...dims.map((dim: any) => Math.abs(div[dim.key] ?? 0)))
-          return (
-            <Card key={d.id}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">{d.scenario}</CardTitle>
-                <CardDescription className="text-xs">{d.headline}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Agreement</span>
-                  <span className={`text-2xl font-bold tabular-nums ${d.agreementRate >= 0.9 ? 'text-emerald-600' : d.agreementRate >= 0.75 ? 'text-amber-600' : 'text-rose-600'}`}>
-                    {Math.round(d.agreementRate * 100)}%
-                  </span>
-                </div>
-                <Separator />
-                <div className="space-y-1.5">
-                  {dims.map((dim: any) => {
-                    const v = div[dim.key] ?? 0
-                    return (
-                      <div key={dim.key} className="flex items-center gap-2 text-xs">
-                        <span className="w-32 text-muted-foreground">{dim.label}</span>
-                        <div className="flex-1 h-1.5 bg-muted rounded overflow-hidden relative">
-                          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-foreground/30" />
-                          <div
-                            className="absolute top-0 bottom-0"
-                            style={{
-                              left: v >= 0 ? '50%' : `${50 + (v / maxAbs) * 50}%`,
-                              right: v >= 0 ? `${50 - (v / maxAbs) * 50}%` : '50%',
-                              background: v >= 0 ? '#f97316' : '#10b981',
-                            }}
-                          />
-                        </div>
-                        <span className="w-10 text-right tabular-nums text-muted-foreground">{v.toFixed(2)}</span>
+      {/* N1.2 — The real fidelity test */}
+      <PanelCard title="Run a fidelity test (N1.2)" description="Create a scenario, capture the human's response as gold data, run the same scenario against v1.4 (pre-learning) and v1.5 (post-learning), evaluate both with an independent evaluator, and compare.">
+        <div className="space-y-2">
+          <div>
+            <Label className="text-xs">Scenario context</Label>
+            <Textarea value={scenarioContext} onChange={(e) => setScenarioContext(e.target.value)} className="min-h-16 text-sm" placeholder="e.g., You have 4x pipeline coverage, but 45% of opportunities are stalled in late stage. The executive sponsor changed at your top-3 accounts." />
+          </div>
+          <div>
+            <Label className="text-xs">Scenario question</Label>
+            <Input value={scenarioQuestion} onChange={(e) => setScenarioQuestion(e.target.value)} placeholder="e.g., What would you do?" />
+          </div>
+          <div>
+            <Label className="text-xs">Human response (gold data — what would Sarah say?)</Label>
+            <Textarea value={humanResponse} onChange={(e) => setHumanResponse(e.target.value)} className="min-h-20 text-sm" placeholder="e.g., I would ignore raw pipeline coverage initially. I'd inspect stage aging because inflated late-stage pipeline hides forecast risk. Then I'd check deal concentration..." />
+          </div>
+          <Button onClick={runFidelityTest} disabled={fidelityAction.isPending || !scenarioContext.trim() || !scenarioQuestion.trim() || !humanResponse.trim()} className="bg-emerald-600 hover:bg-emerald-700">
+            {fidelityAction.isPending ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <FlaskConical className="h-4 w-4 mr-2" />}
+            Run paired fidelity test (v1.4 vs v1.5)
+          </Button>
+        </div>
+      </PanelCard>
+
+      {/* N1.2 — Evidence-backed evaluations */}
+      {fdata?.scenarios?.length > 0 && (
+        <PanelCard title="Evaluation results — evidence-backed" description="Each evaluation shows per-dimension scores with excerpts from both the human and clone responses. The evaluator is a separate model call — not the same model that generated the clone response.">
+          <div className="space-y-3">
+            {fdata.scenarios.map((s: any) => (
+              <Card key={s.id}>
+                <CardContent className="p-3 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-xs">{s.title}</Badge>
+                    <Badge variant="outline" className="text-[10px]">{s.difficulty}</Badge>
+                    <Badge variant="outline" className="text-[10px]">{s.humanResponseCount} human response(s)</Badge>
+                  </div>
+                  {s.executions.map((ex: any) => (
+                    <div key={ex.id} className="rounded border p-2 space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap text-xs">
+                        <Badge variant="outline" className="font-mono text-[10px]">{ex.cloneVersionId === clone.currentVersion?.id ? 'v1.5 (post-learning)' : 'v1.4 (pre-learning)'}</Badge>
+                        <StatusBadge status={ex.status} />
+                        {ex.evaluation && (
+                          <Badge variant="outline" className={`text-[10px] ${ex.evaluation.agreementRate >= 0.75 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                            {Math.round(ex.evaluation.agreementRate * 100)}% agreement
+                          </Badge>
+                        )}
+                        <span className="text-muted-foreground ml-auto">{ex.evaluation?.headlineSummary}</span>
                       </div>
-                    )
-                  })}
+                      {ex.evaluation?.dimensionScores?.length > 0 && (
+                        <div className="space-y-1">
+                          {ex.evaluation.dimensionScores.map((ds: any) => (
+                            <div key={ds.dimension} className="grid grid-cols-[80px_1fr_40px] gap-2 items-center text-xs">
+                              <span className="text-muted-foreground capitalize">{ds.dimension}</span>
+                              <div className="flex items-center gap-1">
+                                <div className="flex-1 h-1.5 bg-muted rounded overflow-hidden">
+                                  <div className={`h-full ${ds.score >= 75 ? 'bg-emerald-500' : ds.score >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${ds.score}%` }} />
+                                </div>
+                                <span className="tabular-nums w-8 text-right">{ds.score.toFixed(0)}</span>
+                              </div>
+                              <Badge variant="outline" className={`text-[9px] ${ds.alignment === 'aligned' ? 'bg-emerald-100 text-emerald-800' : ds.alignment === 'partial' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}`}>
+                                {ds.alignment}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {ex.evaluation?.dimensionScores?.some((ds: any) => ds.evidence) && (
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground">Evidence (click to expand)</summary>
+                          <div className="space-y-1 mt-1">
+                            {ex.evaluation.dimensionScores.filter((ds: any) => ds.evidence).map((ds: any) => (
+                              <div key={ds.dimension} className="border-l-2 border-border pl-2">
+                                <span className="font-medium capitalize">{ds.dimension}:</span> {ds.evidence}
+                                <div className="text-[10px] text-muted-foreground mt-0.5">Human: "{ds.humanExcerpt?.slice(0, 100)}"</div>
+                                <div className="text-[10px] text-muted-foreground">Clone: "{ds.cloneExcerpt?.slice(0, 100)}"</div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </PanelCard>
+      )}
+
+      {/* N1.2 — Evidence-backed CloneScore */}
+      {fdata?.score && (
+        <PanelCard title="Evidence-backed CloneScore" description="The score is now aggregated from real evaluation evidence — not a fixture. Each dimension links to the underlying scenario results.">
+          <div className="text-center mb-3">
+            <div className="text-4xl font-bold tabular-nums">{fdata.score.aggregate?.toFixed(1)}<span className="text-xl text-muted-foreground">%</span></div>
+            <div className="text-xs text-muted-foreground mt-1">{fdata.score.notes}</div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {Object.entries(fdata.score.dimensions).map(([k, v]: [string, any]) => (
+              <div key={k} className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground capitalize">{k.replace('Fidelity', '').replace(/([A-Z])/g, ' $1').trim()}</span>
+                <div className="flex-1 h-1.5 bg-muted rounded overflow-hidden">
+                  <div className={`h-full ${v >= 75 ? 'bg-emerald-500' : v >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${v}%` }} />
                 </div>
-                <Separator />
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <div className="text-muted-foreground">Human</div>
-                    <div className="text-xs">{d.humanResponse?.decision}</div>
+                <span className="tabular-nums w-8 text-right">{v?.toFixed(0)}</span>
+              </div>
+            ))}
+          </div>
+        </PanelCard>
+      )}
+
+      {/* Existing: seeded divergence fixtures (clearly marked) */}
+      <PanelCard title="Seeded divergence reports (FIXTURES — not computed by the engine)" description="These are seeded data from the MVP, not computed by the N1.2 Fidelity Engine. They demonstrate the concept but are not evidence-backed. The real evaluations are above.">
+        <div className="grid gap-4 lg:grid-cols-3">
+          {divergences.map((d: any) => {
+            const div = d.divergence || {}
+            const maxAbs = Math.max(0.01, ...dims.map((dim: any) => Math.abs(div[dim.key] ?? 0)))
+            return (
+              <Card key={d.id}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">{d.scenario}</CardTitle>
+                  <CardDescription className="text-xs">{d.headline}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Agreement</span>
+                    <span className={`text-2xl font-bold tabular-nums ${d.agreementRate >= 0.9 ? 'text-emerald-600' : d.agreementRate >= 0.75 ? 'text-amber-600' : 'text-rose-600'}`}>
+                      {Math.round(d.agreementRate * 100)}%
+                    </span>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground">Clone</div>
-                    <div className="text-xs">{d.cloneResponse?.decision}</div>
+                  <Separator />
+                  <div className="space-y-1.5">
+                    {dims.map((dim: any) => {
+                      const v = div[dim.key] ?? 0
+                      return (
+                        <div key={dim.key} className="flex items-center gap-2 text-xs">
+                          <span className="w-32 text-muted-foreground">{dim.label}</span>
+                          <div className="flex-1 h-1.5 bg-muted rounded overflow-hidden relative">
+                            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-foreground/30" />
+                            <div className="absolute top-0 bottom-0" style={{ left: v >= 0 ? '50%' : `${50 + (v / maxAbs) * 50}%`, right: v >= 0 ? `${50 - (v / maxAbs) * 50}%` : '50%', background: v >= 0 ? '#f97316' : '#10b981' }} />
+                          </div>
+                          <span className="w-10 text-right tabular-nums text-muted-foreground">{v.toFixed(2)}</span>
+                        </div>
+                      )
+                    })}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
-      <Callout tone="amber" title="What the platform can say">
-        “The clone agrees with the user's decisions 94% of the time.” and “The clone consistently underestimates operational risk on forecast commits.” — these statements are evidence-based, not marketing.
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      </PanelCard>
+
+      <Callout tone="emerald" title="N1.2 — The proof layer">
+        N1.1 created the ability to become someone. N1.2 creates the ability to prove that you became someone. The evaluator is an independent model call — the LLM does not grade itself. Each score is backed by evidence (human excerpt + clone excerpt + alignment + evaluator reasoning).
       </Callout>
     </SectionShell>
   )

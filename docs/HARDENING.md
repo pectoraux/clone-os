@@ -1,6 +1,6 @@
 # Clone OS — Foundation Hardening Status
 
-**Milestone: N1.1 — Persistent Learning & Candidate Clone State (OPERATIONAL)**
+**Milestone: N1.2 — Real Fidelity Engine (OPERATIONAL)**
 
 N0 is structurally complete with intentionally incomplete runtimes. N1.1 makes the first real product loop operational: a human teaching interaction produces a provenance-aware candidate artifact, the user confirms it, a versioned candidate clone state is created, and—after release—the clone's behavior genuinely changes in subsequent executions. This is the moment the architecture becomes real.
 
@@ -117,16 +117,23 @@ The frozen architecture (see `docs/ARCHITECTURE.md` and `docs/adr/README.md`) de
 
 ---
 
-## N0.8 — Evaluation / Fidelity Engine
+## N0.8 → N1.2 — Real Fidelity Engine (OPERATIONAL)
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| `FidelityEngine` interface | 🚧 | `src/lib/fidelity/engine.ts` — `runCloneScenario()`, `captureHumanResponse()`, `compare()`, `storeEvidence()`, `recomputeCloneScore()`. Stub throws `NOT_IMPLEMENTED`. |
-| `FidelityScenario` / `FidelityComparison` types | ✅ | Typed: scenario + human response + clone response + per-dimension divergence + agreement rate + headline + evidence. |
-| FidelityDivergence records (data) | ✅ | Seeded for the MVP — 3 divergence reports with headlines like "agrees 94% of the time" and "consistently underestimates operational risk". These are FIXTURES, not computed by an engine. |
-| CloneScore records (data) | ✅ | Seeded — 9-dimension score (87.4 aggregate). Also a FIXTURE. |
-| Real scenario runner | 🔴 | Not implemented. No runtime runs the clone against a scenario and computes divergence. |
-| Real CloneScore computation | 🔴 | Not implemented. The aggregate is a seeded value, not computed from divergence reports. |
+| `FidelityEngine` | ✅ | `src/lib/fidelity/engine.ts` — **OPERATIONAL**. `createScenario()` creates a controlled professional situation (not just a prompt). `captureHumanResponse()` stores the human's answer as gold data (the reference model). `runScenario()` runs the clone against the scenario using CloneRuntime + ModelProvider, capturing the CloneResponse linked to a specific version. `evaluate()` compares clone vs human using an INDEPENDENT evaluator model call (different system prompt — the LLM does not grade itself). `recomputeCloneScore()` aggregates evaluation evidence into the CloneScore. |
+| `EvaluationScenario` model | ✅ | Prisma model: title, description, domain, difficulty, promptJson (context+question+inputs), requiredSkills, evaluationDimensions, expectedEvidence, source, version. |
+| `HumanResponse` model | ✅ | Prisma model: content, authorId, decision, reasoning, actions, priorities, riskTolerance, communication, provenance. isGoldData=true. |
+| `CloneResponse` model | ✅ | Prisma model: content, cloneVersionId, modelProvider, modelLatencyMs. Linked to a ScenarioExecution. |
+| `FidelityEvaluation` model | ✅ | Prisma model: agreementRate, headlineSummary, evaluatorModel, evaluatorLatencyMs, evidenceJson. The evaluator is a SEPARATE model call from the clone response generation. |
+| `FidelityDimensionScore` model | ✅ | Prisma model: dimension, score, evidence, humanExcerpt, cloneExcerpt, alignment. Each score is backed by evidence — the user can drill down to "Why is my Decision Fidelity 85%?" and see the excerpts + alignment + evaluator reasoning. |
+| Independent evaluator (not LLM grading itself) | ✅ | The evaluator uses a different system prompt ("You are an independent Fidelity Evaluator") and evaluates per-dimension with excerpts, NOT keyword matching. The reviewer's specific concern: "Don't let the LLM grade itself" — the evaluator is a separate model call with a different framing. |
+| Paired evaluation (same scenario, different versions) | ✅ | The `runScenario` method supports `excludeWorkflowIds` — when running the v1.4 baseline, the learned workflow is excluded, simulating pre-learning behavior. The same scenario is run against both versions and compared to the same human gold data. |
+| Evidence-backed CloneScore | ✅ | `recomputeCloneScore()` aggregates recent FidelityDimensionScores by dimension, weighted (outcome + decision weigh heaviest). The score is no longer a fixture — it's computed from real evaluation evidence. |
+| Old seeded divergence fixtures | 🟡 | The 3 seeded FidelityDivergence records remain in the UI (clearly marked as FIXTURES) for backward compatibility. The real evaluations are above them. |
+| Acceptance test | ✅ | Verified: created scenario "Pipeline forecast risk assessment" → captured Sarah's human response (gold data: "inspect stage aging before raw coverage") → ran v1.5 (post-learning, includes "Pipeline Review Priority Order" workflow) → evaluated: 78% agreement, decision=85 → ran v1.4 (pre-learning, learned workflow EXCLUDED) → evaluated: 75% agreement, decision=60 → **Fidelity(v1.5) > Fidelity(v1.4)**: +3% overall agreement, +25 decision fidelity points. The clone's behavior changed AND the change was proven by an independent evaluator. |
+| Anti-gaming (keyword overlap ≠ fidelity) | ✅ | The evaluator prompt explicitly instructs: "Look for genuine decision-pattern alignment, not lexical overlap. If the clone uses the same keywords but for different reasons, score lower." This prevents users from gaming Clone Score by teaching it phrases. |
+| Clone Evaluation Dataset | 🚧 | The schema supports source classification (public/user_created/company/marketplace/benchmark) but the dataset accumulation workflow is not yet built. |
 
 ---
 
