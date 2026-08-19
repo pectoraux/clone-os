@@ -16,7 +16,7 @@ import { ModelRouter, type RoutingSignal } from '@/lib/runtime/model-provider'
 import { CloneRuntime } from '@/lib/runtime/clone-runtime'
 import { classifyProvenance } from '@/lib/learning/provenance-classifier'
 import { detectConflicts } from '@/lib/learning/conflict-detector'
-import { createCloneStateSnapshot } from '@/lib/fidelity/snapshot'
+import { captureAuthenticSnapshot } from '@/lib/fidelity/snapshot'
 import type { Principal } from '@/lib/auth/request-context'
 
 export interface CaptureInput {
@@ -348,6 +348,11 @@ export class LearningPipeline {
       throw new Error(`Candidate is ${candidate.status}, not pending_approval`)
     }
 
+    // N1.2B: capture an AUTHENTIC snapshot at release time. Only
+    // AUTHENTIC + RELEASE_CAPTURE snapshots qualify as authoritative
+    // historical state for certification-grade evaluation.
+    const snapshot = await captureAuthenticSnapshot(candidate.cloneId, candidate.candidateVersion)
+
     // Create the new CloneVersion
     const newVersion = await db.cloneVersion.create({
       data: {
@@ -360,10 +365,12 @@ export class LearningPipeline {
         performanceImpact: candidate.scoreDelta,
         dependenciesJson: '{}',
         provenanceJson: JSON.stringify({ learningEventIds: JSON.parse(candidate.learningEventIdsJson) }),
-        // N1.2A: create an immutable snapshot of the clone's state at
-        // release time. Evaluation runs against this snapshot, not the
-        // current clone — this is how version comparisons are genuine.
-        stateSnapshotJson: await createCloneStateSnapshot(candidate.cloneId, candidate.candidateVersion),
+        // N1.2B: immutable snapshot with hash + status
+        stateSnapshotJson: snapshot.json,
+        snapshotHash: snapshot.hash,
+        snapshotStatus: 'AUTHENTIC',
+        snapshotOrigin: 'RELEASE_CAPTURE',
+        snapshotCreatedAt: new Date(),
       },
     })
 

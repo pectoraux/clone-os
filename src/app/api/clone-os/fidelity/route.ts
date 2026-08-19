@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getRequestContext, requireAuthenticated, requireCloneOwner } from '@/lib/auth/server'
 import { FidelityEngine } from '@/lib/fidelity/engine'
-import { ensureSnapshotsExist } from '@/lib/fidelity/snapshot'
+import { classifyExistingSnapshots } from '@/lib/fidelity/snapshot'
 
 export const dynamic = 'force-dynamic'
 
@@ -160,13 +160,21 @@ export async function POST(req: NextRequest) {
       const ownerCheck = await requireCloneOwner(ctx, cloneId, db)
       if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.reason }, { status: ownerCheck.status })
 
-      const result = await engine.runScenario({
-        scenarioId, cloneId, tenantId: ctx.tenantId!,
-        principalId: ctx.principal!.id,
-        cloneVersionId, humanResponseId,
-        excludeWorkflowIds,
-      })
-      return NextResponse.json({ ok: true, ...result })
+      try {
+        const result = await engine.runScenario({
+          scenarioId, cloneId, tenantId: ctx.tenantId!,
+          principalId: ctx.principal!.id,
+          cloneVersionId, humanResponseId,
+          excludeWorkflowIds,
+        })
+        return NextResponse.json({ ok: true, ...result })
+      } catch (e: any) {
+        // N1.2B: return structured errors for VERSION_STATE_UNAVAILABLE
+        // and SNAPSHOT_INTEGRITY_FAILURE so callers can distinguish
+        const msg = e?.message || 'Unknown error'
+        const status = msg.includes('VERSION_STATE_UNAVAILABLE') || msg.includes('SNAPSHOT_INTEGRITY_FAILURE') ? 422 : 500
+        return NextResponse.json({ error: msg }, { status })
+      }
     }
 
     case 'evaluate': {
@@ -191,14 +199,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ...result })
     }
 
-    case 'ensure_snapshots': {
-      // N1.2A: create retroactive snapshots for existing versions
+    case 'classify_snapshots': {
+      // N1.2B: classify existing versions as RETROACTIVE/UNAVAILABLE/AUTHENTIC
+      // This REPLACES the old ensureSnapshotsExist that fabricated snapshots
+      // from the current clone state. Now: never fabricate historical truth.
       const { cloneId } = body
       if (!cloneId) return NextResponse.json({ error: 'cloneId required' }, { status: 400 })
       const ownerCheck = await requireCloneOwner(ctx, cloneId, db)
       if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.reason }, { status: ownerCheck.status })
 
-      const result = await ensureSnapshotsExist(cloneId)
+      const result = await classifyExistingSnapshots(cloneId)
       return NextResponse.json({ ok: true, ...result })
     }
 

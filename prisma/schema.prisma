@@ -238,6 +238,15 @@ model CloneVersion {
   // not "current clone minus one workflow."
   stateSnapshotJson  String?
 
+  // N1.2B: Historical Version Truth. Only AUTHENTIC + RELEASE_CAPTURE
+  // snapshots qualify as authoritative historical state for
+  // certification-grade evaluation. RETROACTIVE snapshots are for
+  // debugging only. UNAVAILABLE means the version cannot be reproduced.
+  snapshotStatus     String?  // AUTHENTIC | RETROACTIVE | UNAVAILABLE
+  snapshotOrigin     String?  // RELEASE_CAPTURE | IMPORTED | MIGRATION_RECONSTRUCTION
+  snapshotHash       String?  // SHA-256 of canonical serialization
+  snapshotCreatedAt  DateTime? // when the snapshot was captured
+
   activeForClones Clone[] @relation("CloneActiveVersion")
 
   // Rollback support (ADR-0010)

@@ -3,11 +3,11 @@
 // PURPOSE: Prove empirically that learning makes the clone more faithful
 // to the human.
 //
-// N1.2A FIXES:
+// N1.2A + N1.2B FIXES:
 // 1. Immutable Clone State Snapshots: runScenario loads the version's
-//    snapshot, not the current clone. For versions without snapshots
-//    (pre-N1.2A), falls back to current clone + excludeWorkflowIds with
-//    a warning.
+//    snapshot, not the current clone. N1.2B: the snapshot must be
+//    AUTHENTIC + RELEASE_CAPTURE — no fallback to current clone, no
+//    excludeWorkflowIds in the production path.
 // 2. Evaluator failure = FAILED, no score: the old fallback (fabricate
 //    50%) is removed. A FAILED evaluation persists the error evidence
 //    but does NOT contribute to CloneScore.
@@ -15,6 +15,9 @@
 //    rubricVersion, temperature, inputsHash.
 // 4. Score type separation: fidelity | competence | outcome. Not every
 //    evaluation contributes equally to the public CloneScore.
+// 5. N1.2B: Evaluation gate — verify snapshot status, origin, and hash
+//    before running. Return VERSION_STATE_UNAVAILABLE or
+//    SNAPSHOT_INTEGRITY_FAILURE on failure. Never silently fall back.
 //
 // The evaluator is a SEPARATE model call from clone generation (different
 // system prompt). The architecture supports model A ≠ model B — the
@@ -28,7 +31,7 @@
 import { db } from '@/lib/db'
 import { ModelRouter, type RoutingSignal, type ModelProvider } from '@/lib/runtime/model-provider'
 import { CloneRuntime } from '@/lib/runtime/clone-runtime'
-import { loadCloneStateSnapshot, type CloneStateSnapshot } from '@/lib/fidelity/snapshot'
+import { loadCloneStateSnapshot, getSnapshotMetadata, verifySnapshotIntegrity, type CloneStateSnapshot } from '@/lib/fidelity/snapshot'
 import type { Principal } from '@/lib/auth/request-context'
 import { createHash } from 'crypto'
 
@@ -127,48 +130,54 @@ export class FidelityEngine {
   // N1.2A: loads the version's IMMUTABLE SNAPSHOT, not the current clone.
   // If no snapshot exists (pre-N1.2A version), falls back to current
   // clone + excludeWorkflowIds with a warning.
-  async runScenario(input: RunScenarioInput): Promise<{ executionId: string; cloneResponseId: string; cloneContent: string; usedSnapshot: boolean }> {
+  async runScenario(input: RunScenarioInput): Promise<{ executionId: string; cloneResponseId: string; cloneContent: string; usedSnapshot: boolean; snapshotStatus: string; snapshotOrigin: string }> {
     const scenario = await db.evaluationScenario.findUnique({ where: { id: input.scenarioId } })
     if (!scenario) throw new Error('Scenario not found')
 
     const humanResp = await db.humanResponse.findUnique({ where: { id: input.humanResponseId } })
     if (!humanResp) throw new Error('Human response not found')
 
-    // N1.2A: Try to load the immutable snapshot for this version
-    const snapshot = await loadCloneStateSnapshot(input.cloneVersionId)
-    let systemPrompt: string
-    let usedSnapshot = false
-
-    if (snapshot) {
-      // Build context from the IMMUTABLE SNAPSHOT — this is the real v1.4
-      // or v1.5 state, not "current clone minus one workflow."
-      systemPrompt = this.buildSystemPromptFromSnapshot(snapshot)
-      usedSnapshot = true
-    } else {
-      // Fallback: no snapshot exists (pre-N1.2A version). Load current
-      // clone + optionally exclude workflows. This is an approximation —
-      // the reviewer correctly noted that this doesn't recreate the
-      // actual version state if non-workflow artifacts changed.
-      console.warn(`[FidelityEngine] No snapshot for version ${input.cloneVersionId}. Using current clone state with excludeWorkflowIds fallback.`)
-      const clone = await db.clone.findUnique({
-        where: { id: input.cloneId },
-        include: {
-          professionalIdentity: { include: { user: true } },
-          skills: true,
-          knowledgeItems: { take: 12, orderBy: { createdAt: 'desc' } },
-          memories: { take: 8, orderBy: { importance: 'desc' } },
-          policies: { take: 8 },
-          workflows: { orderBy: { createdAt: 'desc' } },
+    // N1.2B: Evaluation gate — verify snapshot before running.
+    // Only AUTHENTIC + RELEASE_CAPTURE snapshots qualify for
+    // certification-grade evaluation. No fallback to current clone.
+    const meta = await getSnapshotMetadata(input.cloneVersionId)
+    if (!meta.hasSnapshot || meta.status === 'UNAVAILABLE') {
+      // Persist a failed execution with the reason
+      const execution = await db.scenarioExecution.create({
+        data: {
+          scenarioId: input.scenarioId,
+          cloneId: input.cloneId,
+          cloneVersionId: input.cloneVersionId,
+          tenantId: input.tenantId,
+          humanResponseId: input.humanResponseId,
+          status: 'failed',
         },
       })
-      if (!clone) throw new Error('Clone not found')
-      if (input.excludeWorkflowIds?.length) {
-        clone.workflows = clone.workflows.filter((w) => !input.excludeWorkflowIds!.includes(w.id))
-      }
-      const ctx = runtime.buildContext({ clone })
-      systemPrompt = runtime.toSystemPrompt(ctx)
+      await db.scenarioExecution.update({
+        where: { id: execution.id },
+        data: { status: 'failed', completedAt: new Date() },
+      })
+      throw new Error('VERSION_STATE_UNAVAILABLE: This version has no authentic snapshot. It cannot be used for certification-grade evaluation.')
+    }
+    if (meta.status !== 'AUTHENTIC' || meta.origin !== 'RELEASE_CAPTURE') {
+      throw new Error(`VERSION_STATE_UNAVAILABLE: Snapshot status=${meta.status}, origin=${meta.origin}. Only AUTHENTIC + RELEASE_CAPTURE qualifies for certification-grade evaluation.`)
     }
 
+    // Load the snapshot
+    const snapshot = await loadCloneStateSnapshot(input.cloneVersionId)
+    if (!snapshot) {
+      throw new Error('VERSION_STATE_UNAVAILABLE: Snapshot metadata exists but snapshot data is missing.')
+    }
+
+    // N1.2B: Verify hash integrity
+    if (meta.hash) {
+      if (!verifySnapshotIntegrity(snapshot, meta.hash)) {
+        throw new Error('SNAPSHOT_INTEGRITY_FAILURE: Snapshot hash does not match. The snapshot may have been tampered with or corrupted.')
+      }
+    }
+
+    // Build the system prompt from the AUTHENTIC immutable snapshot
+    const systemPrompt = this.buildSystemPromptFromSnapshot(snapshot)
     const prompt = JSON.parse(scenario.promptJson)
 
     // Create the ScenarioExecution
@@ -219,7 +228,14 @@ export class FidelityEngine {
       data: { status: 'completed', completedAt: new Date() },
     })
 
-    return { executionId: execution.id, cloneResponseId: cloneResponse.id, cloneContent: response.content, usedSnapshot }
+    return {
+      executionId: execution.id,
+      cloneResponseId: cloneResponse.id,
+      cloneContent: response.content,
+      usedSnapshot: true,
+      snapshotStatus: 'AUTHENTIC',
+      snapshotOrigin: 'RELEASE_CAPTURE',
+    }
   }
 
   // Build a system prompt from an immutable snapshot (not the current clone).
