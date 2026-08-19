@@ -38,11 +38,12 @@ bun run dev   # port 3003
 
 | Email | Password | Type |
 | --- | --- | --- |
-| `ekontetevi@gmail` | `***REDACTED_ADMIN_PASSWORD***` | Real admin (approves waitlist) |
 | `sarah-admin@clone.os` | `demo` | Demo Admin |
 | `sarah@clone.os` | `demo` | Demo User (Sarah RevOps clone owner) |
 | `candidate@clone.os` | `demo` | Demo Candidate |
 | `dev@clone.os` | `demo` | Demo Developer |
+
+The **real admin** credentials are sourced from `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables during seeding — they are never committed to the repository. Set them in your `.env` (local) or in your Vercel project's environment variables (production).
 
 New signups land on a waitlist. Admin approves from the **Admin** section (visible only to admins) — approval creates a real user with a temporary password.
 

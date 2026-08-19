@@ -14,6 +14,17 @@ function j(o: unknown): string {
   return JSON.stringify(o);
 }
 
+// Idempotent create-or-skip for slug-unique models. Re-running the seed should
+// never fail on existing rows; we just skip them.
+async function createOrSkip<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise;
+  } catch (e: any) {
+    if (e?.code === "P2002") return null; // unique constraint violation
+    throw e;
+  }
+}
+
 async function main() {
   console.log("Seeding Clone OS...");
 
@@ -47,7 +58,16 @@ async function main() {
   });
 
   // ---------- USERS ----------
-  // Real admin (not demo) — ekontetevi@gmail / ***REDACTED_ADMIN_PASSWORD***
+  // Real admin — email + password come from env (ADMIN_EMAIL / ADMIN_PASSWORD).
+  // Never hardcode credentials in source. The admin is created on first seed;
+  // on subsequent seeds the password is rotated to match the current env value.
+  const adminEmail = process.env.ADMIN_EMAIL || "ekontetevi@gmail";
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    throw new Error(
+      "ADMIN_PASSWORD env var is required to seed the real admin. Set it in .env (never commit .env).",
+    );
+  }
   const adminTenant = await db.tenant.upsert({
     where: { slug: "clone-os-admin" },
     update: {},
@@ -58,19 +78,30 @@ async function main() {
       parentId: platformTenant.id,
     },
   });
-  const realAdmin = await db.user.upsert({
-    where: { email: "ekontetevi@gmail" },
-    update: {},
-    create: {
-      tenantId: adminTenant.id,
-      email: "ekontetevi@gmail",
-      name: "Clone OS Admin",
-      role: "admin",
-      publicKey: `pk_admin_${Math.random().toString(36).slice(2, 12)}`,
-      passwordHash: hashPassword("***REDACTED_ADMIN_PASSWORD***"),
-      accountStatus: "admin",
-    },
-  });
+  // upsert won't update the passwordHash on existing rows (update: {}).
+  // For the admin, we want to rotate the password on every seed so the env
+  // is the source of truth. We do a find-then-create-or-update.
+  const existingAdmin = await db.user.findUnique({ where: { email: adminEmail } });
+  const realAdmin = existingAdmin
+    ? await db.user.update({
+        where: { id: existingAdmin.id },
+        data: {
+          passwordHash: hashPassword(adminPassword),
+          role: "admin",
+          accountStatus: "admin",
+        },
+      })
+    : await db.user.create({
+        data: {
+          tenantId: adminTenant.id,
+          email: adminEmail,
+          name: "Clone OS Admin",
+          role: "admin",
+          publicKey: `pk_admin_${Math.random().toString(36).slice(2, 12)}`,
+          passwordHash: hashPassword(adminPassword),
+          accountStatus: "admin",
+        },
+      });
 
   // Sarah Chen — the demo "user" who owns the RevOps clone
   const sarah = await db.user.upsert({
@@ -608,7 +639,7 @@ async function main() {
     },
   ];
   for (const a of agents) {
-    await db.agent.create({
+    await createOrSkip(db.agent.create({
       data: {
         tenantId: personalTenant.id,
         cloneId: clone.id,
@@ -631,7 +662,7 @@ async function main() {
         status: a.status,
         certificationLevel: a.cert,
       },
-    });
+    }));
   }
 
   // ---------- ENVIRONMENTS ----------
@@ -641,7 +672,7 @@ async function main() {
     { name: "Recruiting Trial Environment", kind: "generic", description: "Sandboxed copy of Sales Environment for recruitment trials. Time-limited access." },
   ];
   for (const e of environments) {
-    await db.environment.create({
+    await createOrSkip(db.environment.create({
       data: {
         tenantId: personalTenant.id,
         name: e.name,
@@ -658,7 +689,7 @@ async function main() {
         policiesJson: j(["Disqualify if ICP-fit < 0.4"]),
         constraintsJson: j(["Max 5 concurrent outreach sequences", "Max 100 emails/day per rep"]),
       },
-    });
+    }));
   }
 
   // ---------- EXTENSIONS (capability-based — ADR-0007) ----------
@@ -672,7 +703,7 @@ async function main() {
     { name: "GitHub Code Access", slug: "github-code", version: "1.1.0", capabilities: ["READ_CODE", "WRITE_CODE"], trust: "verified", pricing: { perCall: 0.001 } },
   ];
   for (const ext of extensions) {
-    await db.extension.create({
+    await createOrSkip(db.extension.create({
       data: {
         tenantId: personalTenant.id,
         name: ext.name,
@@ -693,7 +724,7 @@ async function main() {
         trustLevel: ext.trust,
         installed: ["salesforce-crm", "gmail-email", "google-calendar", "slack-messages", "browser-automation"].includes(ext.slug),
       },
-    });
+    }));
   }
 
   // ---------- TOOLS ----------
@@ -703,7 +734,7 @@ async function main() {
     { name: "Forecast Modeler", capabilities: ["READ_CRM"], description: "Weighted-pipeline forecast with confidence bands." },
   ];
   for (const t of tools) {
-    await db.tool.create({
+    await createOrSkip(db.tool.create({
       data: {
         tenantId: personalTenant.id,
         name: t.name,
@@ -714,7 +745,7 @@ async function main() {
         version: "1.0.0",
         provenanceJson: j({ owner: "sarah", portability: "portable" }),
       },
-    });
+    }));
   }
 
   // ---------- MARKETPLACE LISTINGS ----------
@@ -931,7 +962,7 @@ async function main() {
 
   console.log("Seed complete.");
   console.log(`  Tenant: ${platformTenant.slug}, ${orgTenant.slug}, ${personalTenant.slug}, ${adminTenant.slug}`);
-  console.log(`  Real admin: ${realAdmin.email} (password: ***REDACTED_ADMIN_PASSWORD***)`);
+  console.log(`  Real admin: ${realAdmin.email} (password sourced from ADMIN_PASSWORD env var — not printed)`);
   console.log(`  Demo users: sarah@clone.os, sarah-admin@clone.os, candidate@clone.os, dev@clone.os (all password: demo)`);
   console.log(`  Clone:  ${clone.slug} (v1.4.0, score 87.4)`);
 }
