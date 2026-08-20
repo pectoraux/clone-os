@@ -1,11 +1,11 @@
-// Clone OS — Memory API (N1.3B)
+// Clone OS — Memory API (N1.3B.1)
 // GET /api/clone-os/memory?cloneId=... — list memories
-// POST /api/clone-os/memory — create candidate / consolidate / maintenance
+// POST /api/clone-os/memory — create_candidate | consolidate | maintenance
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getRequestContext, requireAuthenticated, requireCloneOwner } from '@/lib/auth/server'
-import { MemoryManager } from '@/lib/memory/manager'
+import { MemoryManager, type MemoryExecutionContext } from '@/lib/memory/manager'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const ownerCheck = await requireCloneOwner(ctx, cloneId, db)
   if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.reason }, { status: ownerCheck.status })
   const manager = new MemoryManager()
-  const memories = await manager.listMemories(cloneId, true)
+  const memories = await manager.listMemories(cloneId, ctx.tenantId!, true)
   return NextResponse.json({ memories })
 }
 
@@ -31,6 +31,13 @@ export async function POST(req: NextRequest) {
   if (!cloneId) return NextResponse.json({ error: 'cloneId required' }, { status: 400 })
   const ownerCheck = await requireCloneOwner(ctx, cloneId, db)
   if (!ownerCheck.ok) return NextResponse.json({ error: ownerCheck.reason }, { status: ownerCheck.status })
+
+  // N1.3B.1: MemoryExecutionContext — derived from authenticated session
+  const memCtx: MemoryExecutionContext = {
+    principalId: ctx.principal!.id,
+    tenantId: ctx.tenantId!,
+    cloneId,
+  }
   const manager = new MemoryManager()
 
   switch (action) {
@@ -45,11 +52,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ...result })
     }
     case 'consolidate': {
-      const result = await manager.consolidate(cloneId, ctx.tenantId!, ctx.principal!.id)
+      const result = await manager.consolidate(cloneId, ctx.tenantId!, memCtx)
       return NextResponse.json({ ok: true, ...result })
     }
     case 'maintenance': {
-      const result = await manager.runDecayMaintenance(cloneId)
+      const result = await manager.runDecayMaintenance(cloneId, ctx.tenantId!)
       return NextResponse.json({ ok: true, ...result })
     }
     default:
