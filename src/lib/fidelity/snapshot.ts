@@ -12,6 +12,14 @@
 import { db } from '@/lib/db'
 import { createHash } from 'crypto'
 
+// N1.3A.4: SnapshotArtifactRef — stable identity for every artifact in the
+// snapshot. Uses the REAL database ID (not synthetic name-based IDs).
+export interface SnapshotArtifactRef {
+  id: string              // the real database artifact ID
+  artifactVersion: string // the clone version this snapshot is for
+  artifactHash: string    // SHA-256 of the artifact's content (for integrity)
+}
+
 export interface CloneStateSnapshot {
   name: string
   slug: string
@@ -31,11 +39,12 @@ export interface CloneStateSnapshot {
     culture: Record<string, any>
     user: { name: string; email: string; publicKey: string | null } | null
   } | null
-  skills: Array<{ name: string; domain: string; proficiency: number; certificationLevel: string }>
-  knowledge: Array<{ title: string; content: string; kind: string; sourceKind: string; sensitivity: string; portability: string }>
-  memories: Array<{ kind: string; content: string; importance: number }>
-  workflows: Array<{ name: string; description: string; stepsJson: string; version: string }>
-  policies: Array<{ name: string; description: string; ruleJson: string; appliesTo: string }>
+  // N1.3A.4: each artifact carries its real DB id + version + hash
+  skills: Array<{ id: string; name: string; domain: string; proficiency: number; certificationLevel: string; artifactVersion: string; artifactHash: string }>
+  knowledge: Array<{ id: string; title: string; content: string; kind: string; sourceKind: string; sensitivity: string; portability: string; artifactVersion: string; artifactHash: string }>
+  memories: Array<{ id: string; kind: string; content: string; importance: number; artifactVersion: string; artifactHash: string }>
+  workflows: Array<{ id: string; name: string; description: string; stepsJson: string; version: string; artifactVersion: string; artifactHash: string }>
+  policies: Array<{ id: string; name: string; description: string; ruleJson: string; appliesTo: string; artifactVersion: string; artifactHash: string }>
   version: string
   snapshotCreatedAt: string
 }
@@ -74,11 +83,12 @@ export async function captureAuthenticSnapshot(cloneId: string, version: string)
     where: { id: cloneId },
     include: {
       professionalIdentity: { include: { user: true } },
-      skills: { select: { name: true, domain: true, proficiency: true, certificationLevel: true } },
-      knowledgeItems: { select: { title: true, content: true, kind: true, sourceKind: true, sensitivity: true, portability: true } },
-      memories: { select: { kind: true, content: true, importance: true } },
-      workflows: { select: { name: true, description: true, stepsJson: true, version: true } },
-      policies: { select: { name: true, description: true, ruleJson: true, appliesTo: true } },
+      // N1.3A.4: select the real `id` field for every artifact
+      skills: { select: { id: true, name: true, domain: true, proficiency: true, certificationLevel: true } },
+      knowledgeItems: { select: { id: true, title: true, content: true, kind: true, sourceKind: true, sensitivity: true, portability: true } },
+      memories: { select: { id: true, kind: true, content: true, importance: true } },
+      workflows: { select: { id: true, name: true, description: true, stepsJson: true, version: true } },
+      policies: { select: { id: true, name: true, description: true, ruleJson: true, appliesTo: true } },
     },
   })
   if (!clone) throw new Error('Clone not found for snapshot')
@@ -106,11 +116,11 @@ export async function captureAuthenticSnapshot(cloneId: string, version: string)
             : null,
         }
       : null,
-    skills: clone.skills,
-    knowledge: clone.knowledgeItems,
-    memories: clone.memories,
-    workflows: clone.workflows,
-    policies: clone.policies,
+    skills: clone.skills.map(s => ({ ...s, artifactVersion: version, artifactHash: createHash('sha256').update(canonicalSerialize(s)).digest('hex') })),
+    knowledge: clone.knowledgeItems.map(k => ({ ...k, artifactVersion: version, artifactHash: createHash('sha256').update(canonicalSerialize(k)).digest('hex') })),
+    memories: clone.memories.map(m => ({ ...m, artifactVersion: version, artifactHash: createHash('sha256').update(canonicalSerialize(m)).digest('hex') })),
+    workflows: clone.workflows.map(w => ({ ...w, artifactVersion: version, artifactHash: createHash('sha256').update(canonicalSerialize(w)).digest('hex') })),
+    policies: clone.policies.map(p => ({ ...p, artifactVersion: version, artifactHash: createHash('sha256').update(canonicalSerialize(p)).digest('hex') })),
     version,
     snapshotCreatedAt: new Date().toISOString(),
   }

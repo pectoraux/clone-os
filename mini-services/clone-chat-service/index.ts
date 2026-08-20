@@ -249,7 +249,7 @@ io.on("connection", (socket) => {
       io.to(socket.id).emit("clone:message", { id: generateId(), role: "clone", content: execResult.content, ts: Date.now() } as ChatMessage)
       io.to(socket.id).emit("clone:typing", { ts: Date.now() })
 
-      console.log(`[clone-chat] ${socket.id} msg processed via ${provider.id} (retrieval: ${compiled.selectedArtifacts.length} included, ${compiled.excludedArtifacts.length} excluded, ${compiled.estimatedTokens} tokens, hash=${compiled.contextHash.slice(0, 8)})`)
+      console.log(`[clone-chat] ${socket.id} msg processed via ${execResult.providerId} (routing=${execResult.routingSignal}, retrieval: ${compiled.selectedArtifacts.length} included, ${compiled.excludedArtifacts.length} excluded, ${compiled.estimatedTokens} tokens, hash=${compiled.contextHash.slice(0, 8)})`)
     } catch (e: any) {
       console.error("[clone-chat] message error", e);
       io.to(socket.id).emit("clone:error", { message: e?.message ?? "message failed" });

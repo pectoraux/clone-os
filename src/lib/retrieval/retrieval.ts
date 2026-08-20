@@ -59,14 +59,18 @@ export interface RetrievalCandidate {
   // N1.3A.2: stable identity for snapshot matching
   artifactVersion?: string
   artifactHash?: string
+  // N1.3A.4: structural fields — no more concatenated-content parsing
+  structuredSteps?: string[]       // for workflows: ordered steps
+  structuredDescription?: string    // for workflows: clean description (no stepsJson appended)
+  structuredRule?: Record<string, unknown> // for policies: the rule object
 }
 
 export interface RetrievalResult {
   candidates: RetrievalCandidate[]
   excluded: Array<RetrievalCandidate & { reason: string; exclusionType: 'authorization' | 'budget' }>
   evidence: RetrievalEvidence[]
-  // N1.3A.3: redaction audit trail (original content NOT included)
-  redactedArtifacts?: Array<{ artifactId: string; redactedContent: string; reason: string }>
+  // N1.3A.4: redaction audit trail — NO plaintext original content
+  redactedArtifacts?: Array<{ artifactId: string; redactedContent: string; redactedHash: string; sourceKind: string; sensitivity: string; reason: string }>
 }
 
 export interface RetrievalEvidence {
@@ -129,44 +133,55 @@ export class KeywordRetriever implements Retriever {
     return candidates.sort((a, b) => b.relevanceScore - a.relevanceScore).slice(0, query.limit)
   }
 
-  // N1.3A.2: retrieve from an immutable snapshot using stable artifact IDs
+  // N1.3A.4: retrieve from an immutable snapshot using REAL artifact IDs
+  // (the database PK stored in the snapshot). No more synthetic snap:... IDs.
   private retrieveFromSnapshot(snapshot: CloneStateSnapshot, type: ArtifactType): RetrievalCandidate[] {
     switch (type) {
       case 'knowledge':
         return snapshot.knowledge.map(k => ({
-          artifactId: `snap:${snapshot.version}:k:${k.title}`, artifactType: 'knowledge' as const,
+          artifactId: k.id, artifactType: 'knowledge' as const,
           name: k.title, content: k.content, sourceKind: k.sourceKind, sensitivity: k.sensitivity,
           portability: k.portability, relevanceScore: 0, importance: 0.5, recency: 0.5,
-          confidence: 0.8, domain: k.kind, artifactVersion: snapshot.version,
+          confidence: 0.8, domain: k.kind, artifactVersion: k.artifactVersion,
+          artifactHash: k.artifactHash,
         }))
       case 'workflow':
         return snapshot.workflows.map(w => ({
-          artifactId: `snap:${snapshot.version}:w:${w.name}`, artifactType: 'workflow' as const,
-          name: w.name, content: w.description + ' ' + w.stepsJson, sourceKind: 'user_general',
+          artifactId: w.id, artifactType: 'workflow' as const,
+          name: w.name, content: w.description, sourceKind: 'user_general',
           sensitivity: 'internal', portability: 'portable', relevanceScore: 0, importance: 0.7,
-          recency: 0.5, confidence: 0.8, domain: 'procedure', artifactVersion: snapshot.version,
+          recency: 0.5, confidence: 0.8, domain: 'procedure', artifactVersion: w.artifactVersion,
+          artifactHash: w.artifactHash,
+          // N1.3A.4: structural fields — no more concatenated-content parsing
+          structuredSteps: JSON.parse(w.stepsJson || '[]'),
+          structuredDescription: w.description,
         }))
       case 'memory':
         return snapshot.memories.map(m => ({
-          artifactId: `snap:${snapshot.version}:m:${m.content.slice(0, 32)}`, artifactType: 'memory' as const,
+          artifactId: m.id, artifactType: 'memory' as const,
           name: m.kind, content: m.content, sourceKind: 'user_general', sensitivity: 'internal',
           portability: 'portable', relevanceScore: 0, importance: m.importance, recency: 0.5,
-          confidence: 0.7, domain: m.kind, artifactVersion: snapshot.version,
+          confidence: 0.7, domain: m.kind, artifactVersion: m.artifactVersion,
+          artifactHash: m.artifactHash,
         }))
       case 'policy':
         return snapshot.policies.map(p => ({
-          artifactId: `snap:${snapshot.version}:p:${p.name}`, artifactType: 'policy' as const,
-          name: p.name, content: p.description + ' ' + p.ruleJson, sourceKind: 'user_general',
+          artifactId: p.id, artifactType: 'policy' as const,
+          name: p.name, content: p.description, sourceKind: 'user_general',
           sensitivity: 'internal', portability: 'portable', relevanceScore: 0, importance: 0.9,
-          recency: 0.3, confidence: 0.9, domain: p.appliesTo, artifactVersion: snapshot.version,
+          recency: 0.3, confidence: 0.9, domain: p.appliesTo, artifactVersion: p.artifactVersion,
+          artifactHash: p.artifactHash,
+          // N1.3A.4: structural field — the actual rule object
+          structuredRule: JSON.parse(p.ruleJson || '{}'),
         }))
       case 'skill':
         return snapshot.skills.map(s => ({
-          artifactId: `snap:${snapshot.version}:s:${s.name}`, artifactType: 'skill' as const,
+          artifactId: s.id, artifactType: 'skill' as const,
           name: s.name, content: `${s.name} (${s.domain}, proficiency ${s.proficiency}%)`,
           sourceKind: 'user_general', sensitivity: 'internal', portability: 'portable',
           relevanceScore: 0, importance: s.proficiency / 100, recency: 0.5, confidence: 0.8,
-          domain: s.domain, artifactVersion: snapshot.version,
+          domain: s.domain, artifactVersion: s.artifactVersion,
+          artifactHash: s.artifactHash,
         }))
       default: return []
     }
@@ -180,7 +195,7 @@ export class KeywordRetriever implements Retriever {
       }
       case 'workflow': {
         const items = await db.workflow.findMany({ where: { cloneId } })
-        return items.map(w => ({ artifactId: w.id, artifactType: 'workflow' as const, name: w.name, content: w.description + ' ' + w.stepsJson, sourceKind: 'user_general', sensitivity: 'internal', portability: 'portable', relevanceScore: 0, importance: 0.7, recency: 0.5, confidence: 0.8, domain: 'procedure' }))
+        return items.map(w => ({ artifactId: w.id, artifactType: 'workflow' as const, name: w.name, content: w.description, sourceKind: 'user_general', sensitivity: 'internal', portability: 'portable', relevanceScore: 0, importance: 0.7, recency: 0.5, confidence: 0.8, domain: 'procedure', structuredSteps: JSON.parse(w.stepsJson || '[]'), structuredDescription: w.description }))
       }
       case 'memory': {
         const items = await db.memory.findMany({ where: { cloneId } })
@@ -188,7 +203,7 @@ export class KeywordRetriever implements Retriever {
       }
       case 'policy': {
         const items = await db.policy.findMany({ where: { OR: [{ cloneId }, { cloneId: null }] } })
-        return items.map(p => ({ artifactId: p.id, artifactType: 'policy' as const, name: p.name, content: p.description + ' ' + p.ruleJson, sourceKind: 'user_general', sensitivity: 'internal', portability: 'portable', relevanceScore: 0, importance: 0.9, recency: 0.3, confidence: 0.9, domain: p.appliesTo }))
+        return items.map(p => ({ artifactId: p.id, artifactType: 'policy' as const, name: p.name, content: p.description, sourceKind: 'user_general', sensitivity: 'internal', portability: 'portable', relevanceScore: 0, importance: 0.9, recency: 0.3, confidence: 0.9, domain: p.appliesTo, structuredRule: JSON.parse(p.ruleJson || '{}') }))
       }
       case 'skill': {
         const items = await db.skill.findMany({ where: { cloneId } })
@@ -312,9 +327,11 @@ export interface RetrievalAuthorizationPolicy {
 export class DefaultAuthorizationPolicy implements RetrievalAuthorizationPolicy {
   authorize(ctx: AuthorizationContext): { decision: AuthorizationDecision; reason: string } {
     const { task, artifact } = ctx
-    // Always allow policies (hard constraints apply everywhere)
-    if (artifact.artifactType === 'policy') return { decision: 'ALLOW', reason: 'Policies are always included as hard constraints' }
-
+    // N1.3A.4: authorization happens BEFORE policy-allow.
+    // Policies are NOT inherently safe to expose to every context.
+    // They may contain confidential company rules, client-specific
+    // restrictions, pricing thresholds, or security logic.
+    // Authorization first → then (if allowed) treat as hard constraint.
     const ranks: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 }
     const taskRank = ranks[task.sensitivity] ?? 1
     const artifactRank = ranks[artifact.sensitivity] ?? 1
@@ -334,7 +351,13 @@ export class DefaultAuthorizationPolicy implements RetrievalAuthorizationPolicy 
       return { decision: 'DENY', reason: 'Company-proprietary data in marketplace context' }
     }
 
-      // REDACT: restricted/confidential data in internal task — sanitized
+      // N1.3A.4: policy-allow happens AFTER authorization.
+    // Only if the policy PASSED authorization is it treated as a
+    // hard constraint. This prevents restricted policies from
+    // bypassing sensitivity checks.
+    if (artifact.artifactType === 'policy') return { decision: 'ALLOW', reason: 'Policy authorized — treated as hard constraint' }
+
+    // REDACT: restricted/confidential data in internal task — sanitized
     if ((artifact.sensitivity === 'restricted' || artifact.sensitivity === 'confidential') && task.sensitivity === 'internal') {
       return { decision: 'REDACT', reason: `${artifact.sensitivity} data redacted for internal task` }
     }
@@ -376,17 +399,20 @@ export class DefaultArtifactSerializer implements ArtifactContextSerializer {
   serialize(candidate: RetrievalCandidate): string {
     switch (candidate.artifactType) {
       case 'policy':
-        // Full constraint/rule representation — never truncated
+        // N1.3A.4: use structural rule if available
+        if (candidate.structuredRule && Object.keys(candidate.structuredRule).length) {
+          return `- [POLICY] ${candidate.name}: ${candidate.content} | Rule: ${JSON.stringify(candidate.structuredRule)}`
+        }
         return `- [POLICY] ${candidate.name}: ${candidate.content}`
 
       case 'workflow':
-        // Structured ordered steps — the full procedure, not first-200-chars
-        // The content field contains description + stepsJson concatenated.
-        // Parse out the steps if possible.
-        const stepsMatch = candidate.content.match(/\[([^\]]+)\]/)
-        const steps = candidate.content.includes('[') ?
-          candidate.content.slice(candidate.content.indexOf('[')) : ''
-        return `- [PROCEDURE] ${candidate.name}: ${candidate.content.slice(0, candidate.content.indexOf('[') > 0 ? candidate.content.indexOf('[') : 300)}${steps}`
+        // N1.3A.4: use structural fields — no more concatenated-content parsing
+        if (candidate.structuredSteps?.length) {
+          const stepsList = candidate.structuredSteps.map((s, i) => `  ${i + 1}. ${s}`).join('\n')
+          return `- [PROCEDURE] ${candidate.name}: ${candidate.structuredDescription || candidate.content}\n${stepsList}`
+        }
+        // Fallback for live-DB candidates without structural fields
+        return `- [PROCEDURE] ${candidate.name}: ${candidate.content.slice(0, 300)}`
 
       case 'knowledge':
         // Relevant content excerpt — up to 300 chars (not 200)
@@ -467,10 +493,16 @@ export class RetrievalService {
       } else if (authResult.decision === 'REDACT') {
         // N1.3A.3: actually redact — replace content with sanitized form
         const redacted = this.redactor.redact(c, authResult.reason)
+        // N1.3A.4: do NOT store originalContent in the audit trail.
+        // Store a hash of the original content for integrity, but not
+        // the plaintext. Sensitive material belongs behind a separate
+        // protected audit/data-access subsystem.
         redactedArtifacts.push({
           artifactId: c.artifactId,
-          originalContent: c.content, // stored for audit only, NOT sent to model
           redactedContent: redacted.content,
+          redactedHash: createHash('sha256').update(c.content).digest('hex').slice(0, 16),
+          sourceKind: c.sourceKind,
+          sensitivity: c.sensitivity,
           reason: authResult.reason,
         })
         authorized.push(redacted) // push the REDACTED version, not the original
@@ -538,12 +570,14 @@ export class RetrievalService {
       excluded: [...deniedByAuth, ...deniedByBudget],
       evidence,
       // N1.3A.3: redaction audit trail (original content NOT included — only the fact of redaction)
+      // N1.3A.4: redaction audit trail — NO plaintext original content
       redactedArtifacts: redactedArtifacts.map(r => ({
         artifactId: r.artifactId,
-        redactedContent: r.redactedContent,
+        redactedContent: r.redactedContent, // the sanitized form (safe to log)
+        redactedHash: r.redactedHash,       // hash of the original (for integrity)
+        sourceKind: r.sourceKind,
+        sensitivity: r.sensitivity,
         reason: r.reason,
-        // Original content is NOT included in the return value — it must not
-        // be accidentally logged or sent to the client.
       })),
     }
   }
