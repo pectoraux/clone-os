@@ -3,3 +3,4 @@ node_modules/
 .next/
 dev.log
 .env
+mini-services/clone-chat-service/service.log
