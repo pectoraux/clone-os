@@ -339,15 +339,79 @@ model Experience {
   createdAt    DateTime @default(now())
 }
 
+// N1.3B: Memory is now a governed, evidence-backed, time-aware component
+// of the professional self — not merely a content blob.
 model Memory {
-  id          String   @id @default(cuid())
-  cloneId     String
-  clone       Clone    @relation(fields: [cloneId], references: [id])
-  tenantId    String
-  kind        String   // episodic | semantic | procedural | preference | correction
-  content     String
-  importance  Float    @default(0.5) // 0..1
-  createdAt   DateTime @default(now())
+  id              String   @id @default(cuid())
+  cloneId         String
+  clone           Clone    @relation(fields: [cloneId], references: [id])
+  tenantId        String
+  // N1.3B: expanded memory types
+  type            String   @default("episodic") // episodic | semantic | procedural | preference | policy | behavioral | experience | correction
+  // N1.3B: lifecycle state machine (not booleans)
+  state           String   @default("active") // candidate | active | reinforced | weakened | superseded | archived | forgotten | conflicted
+  // Content + structured content
+  content         String
+  structuredContentJson String? // JSON: type-specific structured representation
+  // N1.3B: confidence is dynamic (reinforced/weakened by evidence)
+  confidence      Float    @default(0.5) // 0..1
+  importance      Float    @default(0.5) // 0..1
+  utility         Float    @default(0.5) // 0..1 — distinct from importance
+  // N1.3B: lifecycle tracking
+  reinforcementCount  Int  @default(0)
+  contradictionCount  Int  @default(0)
+  accessCount         Int  @default(0)
+  decayScore          Float @default(0) // 0..1, higher = more decayed
+  lastRetrievedAt     DateTime?
+  lastReinforcedAt    DateTime?
+  // N1.3B: temporal validity
+  validFrom       DateTime?
+  validUntil      DateTime?
+  observedAt      DateTime? // when the memory was first observed (may differ from createdAt)
+  // N1.3B: supersession chain (never delete old memories)
+  supersedesMemoryId  String?
+  supersededByMemoryId String?
+  // N1.3B: provenance + scope + portability
+  sourceKind      String   @default("user_general") // user_general | company_proprietary | client_data | public | licensed | third_party | generated
+  sourceEvent     String?  // the learning event / experience that produced this memory
+  scope           String   @default("personal") // personal | organization | team | project | client | task
+  sensitivity     String   @default("internal") // public | internal | confidential | restricted
+  portability     String   @default("portable") // portable | tenant_locked | client_locked | non_exportable
+  // N1.3B: domain for retrieval ranking
+  domain          String   @default("general")
+  // Evidence (one-to-many)
+  evidence        MemoryEvidence[]
+  // Audit trail
+  lifecycleEvents MemoryLifecycleEvent[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// N1.3B: MemoryEvidence — every confidence change is backed by evidence
+model MemoryEvidence {
+  id              String   @id @default(cuid())
+  memoryId        String
+  memory          Memory    @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  sourceType      String   // user_teaching | demonstration | correction | observation | real_world_task | human_approval | evaluation | client_feedback | outcome
+  sourceId        String?  // the LearningEvent / Experience / Evaluation that produced this evidence
+  evidenceWeight  Float    @default(0.5) // 0..1
+  outcome         String?  // positive | negative | neutral — for outcome-based evidence
+  observedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+}
+
+// N1.3B: MemoryLifecycleEvent — audit trail for every state transition
+model MemoryLifecycleEvent {
+  id              String   @id @default(cuid())
+  memoryId        String
+  memory          Memory    @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  operation       String   // create_candidate | activate | reinforce | weaken | consolidate | supersede | archive | restore | forget | retrieve
+  beforeState     String?
+  afterState      String?
+  evidenceJson    String?  // JSON: the evidence that triggered this transition
+  reason          String?
+  actorId         String?
+  createdAt       DateTime @default(now())
 }
 
 model Workflow {

@@ -394,17 +394,22 @@ async function main() {
     });
   }
 
-  // ---------- MEMORY ----------
+  // ---------- MEMORY (N1.3B: full lifecycle fields) ----------
   const memories = [
-    { kind: "preference", content: "Sarah prefers to escalate forecast variance > 15% to the VP Rev.", importance: 0.9 },
-    { kind: "correction", content: "When the clone recommended 'just checking in' outreach, Sarah corrected: lead with research.", importance: 0.95 },
-    { kind: "episodic", content: "2024-02-10: Disqualified Fortune-100 lead. Trigger event was a press release, not an actual need.", importance: 0.8 },
-    { kind: "procedural", content: "Triage order: ICP-fit → trigger event → decision-maker reachable → budget signal → route.", importance: 0.92 },
-    { kind: "semantic", content: "Northwind uses stage definitions: MQL/SQL/Opp/Negotiated/Won. Each has exit criteria.", importance: 0.7 },
+    { type: "preference", content: "Sarah prefers to escalate forecast variance > 15% to the VP Rev.", importance: 0.9, confidence: 0.85, domain: "RevOps" },
+    { type: "correction", content: "When the clone recommended 'just checking in' outreach, Sarah corrected: lead with research.", importance: 0.95, confidence: 0.9, domain: "Sales" },
+    { type: "episodic", content: "2024-02-10: Disqualified Fortune-100 lead. Trigger event was a press release, not an actual need.", importance: 0.8, confidence: 0.75, domain: "Sales" },
+    { type: "procedural", content: "Triage order: ICP-fit → trigger event → decision-maker reachable → budget signal → route.", importance: 0.92, confidence: 0.88, domain: "RevOps" },
+    { type: "semantic", content: "Northwind uses stage definitions: MQL/SQL/Opp/Negotiated/Won. Each has exit criteria.", importance: 0.7, confidence: 0.8, domain: "RevOps" },
   ];
   for (const m of memories) {
     await db.memory.create({
-      data: { cloneId: clone.id, tenantId: personalTenant.id, kind: m.kind, content: m.content, importance: m.importance },
+      data: {
+        cloneId: clone.id, tenantId: personalTenant.id,
+        type: m.type, content: m.content, importance: m.importance,
+        confidence: m.confidence, domain: m.domain,
+        state: "active",
+      },
     });
   }
 

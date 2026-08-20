@@ -30,11 +30,11 @@ async function captureAuthenticSnapshot(cloneId: string, version: string) {
     where: { id: cloneId },
     include: {
       professionalIdentity: { include: { user: true } },
-      skills: { select: { name: true, domain: true, proficiency: true, certificationLevel: true } },
-      knowledgeItems: { select: { title: true, content: true, kind: true, sourceKind: true, sensitivity: true, portability: true } },
-      memories: { select: { kind: true, content: true, importance: true } },
-      workflows: { select: { name: true, description: true, stepsJson: true, version: true } },
-      policies: { select: { name: true, description: true, ruleJson: true, appliesTo: true } },
+      skills: { select: { id: true, name: true, domain: true, proficiency: true, certificationLevel: true } },
+      knowledgeItems: { select: { id: true, title: true, content: true, kind: true, sourceKind: true, sensitivity: true, portability: true } },
+      memories: { select: { id: true, type: true, content: true, importance: true, confidence: true, state: true, domain: true, sourceKind: true, sensitivity: true, portability: true, scope: true } },
+      workflows: { select: { id: true, name: true, description: true, stepsJson: true, version: true } },
+      policies: { select: { id: true, name: true, description: true, ruleJson: true, appliesTo: true } },
     },
   });
   if (!clone) throw new Error("Clone not found");

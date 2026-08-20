@@ -159,9 +159,9 @@ export class KeywordRetriever implements Retriever {
       case 'memory':
         return snapshot.memories.map(m => ({
           artifactId: m.id, artifactType: 'memory' as const,
-          name: m.kind, content: m.content, sourceKind: 'user_general', sensitivity: 'internal',
-          portability: 'portable', relevanceScore: 0, importance: m.importance, recency: 0.5,
-          confidence: 0.7, domain: m.kind, artifactVersion: m.artifactVersion,
+          name: m.type, content: m.content, sourceKind: m.sourceKind || 'user_general', sensitivity: m.sensitivity || 'internal',
+          portability: m.portability || 'portable', relevanceScore: 0, importance: m.importance, recency: 0.5,
+          confidence: m.confidence || 0.7, domain: m.domain || m.type, artifactVersion: m.artifactVersion,
           artifactHash: m.artifactHash,
         }))
       case 'policy':
@@ -199,7 +199,7 @@ export class KeywordRetriever implements Retriever {
       }
       case 'memory': {
         const items = await db.memory.findMany({ where: { cloneId } })
-        return items.map(m => ({ artifactId: m.id, artifactType: 'memory' as const, name: m.kind, content: m.content, sourceKind: 'user_general', sensitivity: 'internal', portability: 'portable', relevanceScore: 0, importance: m.importance, recency: 0.5, confidence: 0.7, domain: m.kind }))
+        return items.map(m => ({ artifactId: m.id, artifactType: 'memory' as const, name: m.type, content: m.content, sourceKind: m.sourceKind, sensitivity: m.sensitivity, portability: m.portability, relevanceScore: 0, importance: m.importance, recency: 0.5, confidence: m.confidence, domain: m.domain, state: m.state }))
       }
       case 'policy': {
         const items = await db.policy.findMany({ where: { OR: [{ cloneId }, { cloneId: null }] } })

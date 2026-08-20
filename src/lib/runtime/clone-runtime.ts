@@ -186,7 +186,7 @@ export class CloneRuntime {
     }
     if (ctx.memories.length) {
       parts.push('# Memories (corrections & preferences carry highest weight)')
-      parts.push(ctx.memories.map((m) => `- [${m.kind}, importance ${m.importance}] ${m.content}`).join('\n'))
+      parts.push(ctx.memories.map((m) => `- [${m.kind || m.type}, importance ${m.importance}] ${m.content}`).join('\n'))
       parts.push('')
     }
     if (ctx.policies.length) { parts.push('# Policies (hard constraints)'); parts.push(ctx.policies.map((p) => `- ${p.name}`).join('\n')); parts.push('') }
