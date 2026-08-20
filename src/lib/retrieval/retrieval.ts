@@ -34,6 +34,8 @@ export interface TaskContext {
   purpose: 'private_use' | 'company_internal' | 'marketplace' | 'recruitment_trial' | 'audit'
   userGoal: string
   retrievalHints: string[]
+  // N1.3A.3: routing signal derived from the task
+  routingSignal: 'general_chat' | 'complex_reasoning' | 'coding' | 'vision' | 'tool_use' | 'classification' | 'privacy_sensitive' | 'long_context'
 }
 
 // ============================================================
@@ -63,6 +65,8 @@ export interface RetrievalResult {
   candidates: RetrievalCandidate[]
   excluded: Array<RetrievalCandidate & { reason: string; exclusionType: 'authorization' | 'budget' }>
   evidence: RetrievalEvidence[]
+  // N1.3A.3: redaction audit trail (original content NOT included)
+  redactedArtifacts?: Array<{ artifactId: string; redactedContent: string; reason: string }>
 }
 
 export interface RetrievalEvidence {
@@ -330,12 +334,34 @@ export class DefaultAuthorizationPolicy implements RetrievalAuthorizationPolicy 
       return { decision: 'DENY', reason: 'Company-proprietary data in marketplace context' }
     }
 
-    // REDACT: restricted data in internal task — include but flag
-    if (artifact.sensitivity === 'restricted' && task.sensitivity === 'internal') {
-      return { decision: 'REDACT', reason: 'Restricted data redacted for internal task' }
+      // REDACT: restricted/confidential data in internal task — sanitized
+    if ((artifact.sensitivity === 'restricted' || artifact.sensitivity === 'confidential') && task.sensitivity === 'internal') {
+      return { decision: 'REDACT', reason: `${artifact.sensitivity} data redacted for internal task` }
     }
 
     return { decision: 'ALLOW', reason: 'Authorized for this task context' }
+  }
+}
+
+// ============================================================
+// ArtifactRedactor — sanitizes REDACT artifacts. The original content
+// MUST NOT reach the model. Only safe metadata is preserved.
+// ============================================================
+export interface ArtifactRedactor {
+  redact(candidate: RetrievalCandidate, reason: string): RetrievalCandidate
+}
+
+export class DefaultArtifactRedactor implements ArtifactRedactor {
+  redact(candidate: RetrievalCandidate, reason: string): RetrievalCandidate {
+    // Replace the content with a sanitized representation.
+    // Preserve: name, artifactType, domain, importance (metadata).
+    // Remove: the actual sensitive content.
+    return {
+      ...candidate,
+      content: `[REDACTED ${candidate.sensitivity.toUpperCase()} ${candidate.sourceKind.toUpperCase()}] ${reason}`,
+      // Mark as redacted so the serializer knows to use the redacted form
+      name: `${candidate.name} (redacted)`,
+    }
   }
 }
 
@@ -397,17 +423,20 @@ export class RetrievalService {
   private budgetStrategy: ContextBudgetStrategy
   private authPolicy: RetrievalAuthorizationPolicy
   private serializer: ArtifactContextSerializer
+  private redactor: ArtifactRedactor
 
   constructor(
     retriever?: Retriever,
     budgetStrategy?: ContextBudgetStrategy,
     authPolicy?: RetrievalAuthorizationPolicy,
     serializer?: ArtifactContextSerializer,
+    redactor?: ArtifactRedactor,
   ) {
     this.retriever = retriever || new KeywordRetriever()
     this.budgetStrategy = budgetStrategy || new DefaultBudgetStrategy()
     this.authPolicy = authPolicy || new DefaultAuthorizationPolicy()
     this.serializer = serializer || new DefaultArtifactSerializer()
+    this.redactor = redactor || new DefaultArtifactRedactor()
   }
 
   async retrieve(
@@ -425,12 +454,26 @@ export class RetrievalService {
     let candidates = await this.retriever.retrieve(query)
 
     // Step 2: Authorization / Policy filter (ALLOW/DENY/REDACT)
+    // N1.3A.3: REDACT now actually redacts — the original content
+    // is replaced with a sanitized representation. The original
+    // content MUST NOT reach the model.
     const authorized: RetrievalCandidate[] = []
     const deniedByAuth: Array<RetrievalCandidate & { reason: string; exclusionType: 'authorization' }> = []
+    const redactedArtifacts: Array<{ artifactId: string; originalContent: string; redactedContent: string; reason: string }> = []
     for (const c of candidates) {
       const authResult = this.authPolicy.authorize({ tenantId, cloneId, task, artifact: c })
       if (authResult.decision === 'DENY') {
         deniedByAuth.push({ ...c, reason: authResult.reason, exclusionType: 'authorization' })
+      } else if (authResult.decision === 'REDACT') {
+        // N1.3A.3: actually redact — replace content with sanitized form
+        const redacted = this.redactor.redact(c, authResult.reason)
+        redactedArtifacts.push({
+          artifactId: c.artifactId,
+          originalContent: c.content, // stored for audit only, NOT sent to model
+          redactedContent: redacted.content,
+          reason: authResult.reason,
+        })
+        authorized.push(redacted) // push the REDACTED version, not the original
       } else {
         authorized.push(c)
       }
@@ -494,11 +537,23 @@ export class RetrievalService {
       candidates: selected,
       excluded: [...deniedByAuth, ...deniedByBudget],
       evidence,
+      // N1.3A.3: redaction audit trail (original content NOT included — only the fact of redaction)
+      redactedArtifacts: redactedArtifacts.map(r => ({
+        artifactId: r.artifactId,
+        redactedContent: r.redactedContent,
+        reason: r.reason,
+        // Original content is NOT included in the return value — it must not
+        // be accidentally logged or sent to the client.
+      })),
     }
   }
 
   getSerializer(): ArtifactContextSerializer {
     return this.serializer
+  }
+
+  getRedactor(): ArtifactRedactor {
+    return this.redactor
   }
 
   getBudget(): ContextBudget {
@@ -520,13 +575,26 @@ export interface CompiledExecutionContext {
   contextHash: string
 }
 
+// N1.3A.3: ProfessionalSelf — the complete identity dimensions that
+// are ALWAYS included in the context (not retrieved, not budget-limited).
+// These represent the professional's core self — retrieval must never erase them.
+export interface ProfessionalSelf {
+  name: string
+  domain: string
+  // Always-on identity dimensions
+  persona: Record<string, any>           // communication style, tone, vocabulary, structure
+  personality: Record<string, any>        // Big Five facets, risk tolerance, pace
+  preferences: Record<string, any>       // forecasting, pipeline, outreach, reporting
+  behavior: Record<string, any>          // default behavior, under pressure, on conflict
+  values: string[]                        // professional values (do not violate)
+  culture: Record<string, any>           // professional, organizational, social, contextual
+  bio: string | null
+  title: string | null
+}
+
 export class ContextCompiler {
   compile(
-    persona: {
-      name: string; domain: string;
-      persona: Record<string, any>; behavior: Record<string, any>;
-      values: string[]; bio: string | null; title: string | null;
-    },
+    self: ProfessionalSelf,
     retrieval: RetrievalResult,
     serializer: ArtifactContextSerializer,
     budget: ContextBudget,
@@ -534,15 +602,47 @@ export class ContextCompiler {
   ): CompiledExecutionContext {
     const parts: string[] = []
 
-    // Identity (always included — reserved system tokens)
-    parts.push(`You are ${persona.name}, the digital professional clone.`)
-    parts.push(`Domain: ${persona.domain}.`)
-    if (persona.bio) { parts.push('# Professional bio'); parts.push(persona.bio); parts.push('') }
-    if (persona.values?.length) { parts.push('# Values (do not violate)'); parts.push(persona.values.map(v => `- ${v}`).join('\n')); parts.push('') }
-    if (persona.persona && Object.keys(persona.persona).length) { parts.push('# Communication style'); parts.push(`- Style: ${persona.persona.communicationStyle ?? 'direct'}`); parts.push(`- Tone: ${persona.persona.tone ?? 'professional'}`); parts.push('') }
-    if (persona.behavior && Object.keys(persona.behavior).length) { parts.push('# Behavioral patterns'); parts.push(Object.entries(persona.behavior).map(([k, v]) => `- ${k}: ${v}`).join('\n')); parts.push('') }
+    // === ALWAYS-ON CORE IDENTITY (reserved system tokens) ===
+    // N1.3A.3: The complete professional self is always included.
+    // Retrieval must never erase personality, preferences, or culture.
+    parts.push(`You are ${self.name}, the digital professional clone.`)
+    parts.push(`Domain: ${self.domain}.`)
+    if (self.bio) { parts.push('# Professional bio'); parts.push(self.bio); parts.push('') }
+    if (self.values?.length) { parts.push('# Professional values (do not violate)'); parts.push(self.values.map(v => `- ${v}`).join('\n')); parts.push('') }
+    // N1.3A.3: Culture — was missing before
+    if (self.culture && Object.keys(self.culture).length) {
+      parts.push('# Cultural context')
+      parts.push(Object.entries(self.culture).map(([k, v]) => `- ${k}: ${v}`).join('\n'))
+      parts.push('')
+    }
+    // Communication style (persona)
+    if (self.persona && Object.keys(self.persona).length) {
+      parts.push('# Communication style')
+      parts.push(`- Style: ${self.persona.communicationStyle ?? 'direct'}`)
+      parts.push(`- Tone: ${self.persona.tone ?? 'professional'}`)
+      if (self.persona.structure) parts.push(`- Structure: ${self.persona.structure}`)
+      parts.push('')
+    }
+    // N1.3A.3: Personality — was missing before
+    if (self.personality && Object.keys(self.personality).length) {
+      parts.push('# Personality')
+      parts.push(Object.entries(self.personality).map(([k, v]) => `- ${k}: ${v}`).join('\n'))
+      parts.push('')
+    }
+    // N1.3A.3: Preferences — was missing before (partially in retrieved, but core preferences are always-on)
+    if (self.preferences && Object.keys(self.preferences).length) {
+      parts.push('# Core preferences')
+      parts.push(Object.entries(self.preferences).map(([k, v]) => `- ${k}: ${v}`).join('\n'))
+      parts.push('')
+    }
+    // Behavioral patterns
+    if (self.behavior && Object.keys(self.behavior).length) {
+      parts.push('# Behavioral patterns')
+      parts.push(Object.entries(self.behavior).map(([k, v]) => `- ${k}: ${v}`).join('\n'))
+      parts.push('')
+    }
 
-    // Retrieved artifacts (type-specific serialization)
+    // === RETRIEVED PROFESSIONAL STATE (budget-limited) ===
     const byType = new Map<string, RetrievalCandidate[]>()
     for (const c of retrieval.candidates) { if (!byType.has(c.artifactType)) byType.set(c.artifactType, []); byType.get(c.artifactType)!.push(c) }
 
@@ -560,7 +660,11 @@ export class ContextCompiler {
     const systemPrompt = parts.join('\n')
     const estimatedTokens = estimateTokens(systemPrompt)
 
-    // Context hash — SHA-256 of the compiled context (NOT the clone state hash)
+    // N1.3A.3: Budget integrity — verify total ≤ maxTokens
+    const budgetExceeded = estimatedTokens > budget.maxTokens
+
+    // Context hash — SHA-256 of the COMPLETE compiled context
+    // (identity + personality + culture + retrieved artifacts + policies)
     const contextHash = createHash('sha256').update(systemPrompt).digest('hex')
 
     return {
@@ -593,9 +697,19 @@ export function parseTask(message: string, domain: string = 'Revenue Operations'
   const urgency = keywords.includes('urgent') || keywords.includes('critical') || keywords.includes('asap') ? 'critical' : keywords.includes('important') ? 'high' : 'normal'
   const sensitivity = keywords.includes('confidential') ? 'confidential' : keywords.includes('client') ? 'restricted' : 'internal'
   const purpose = keywords.includes('marketplace') ? 'marketplace' : keywords.includes('recruit') ? 'recruitment_trial' : keywords.includes('audit') ? 'audit' : 'private_use'
+  // N1.3A.3: routing signal derived from the task
+  let routingSignal: TaskContext['routingSignal'] = 'general_chat'
+  if (keywords.includes('analyz') || keywords.includes('complex') || keywords.includes('reason') || keywords.includes('strategy')) routingSignal = 'complex_reasoning'
+  if (keywords.includes('code') || keywords.includes('debug') || keywords.includes('refactor')) routingSignal = 'coding'
+  if (keywords.includes('image') || keywords.includes('screenshot') || keywords.includes('photo')) routingSignal = 'vision'
+  if (keywords.includes('update') || keywords.includes('send') || keywords.includes('crm') || keywords.includes('email')) routingSignal = 'tool_use'
+  if (keywords.includes('classify') || keywords.includes('categor') || keywords.includes('tag')) routingSignal = 'classification'
+  if (keywords.includes('confidential') || keywords.includes('private') || keywords.includes('sensitive')) routingSignal = 'privacy_sensitive'
+  if (message.length > 5000) routingSignal = 'long_context'
   return {
     intent: message, domain, capabilities, entities, constraints: [],
     urgency: urgency as any, sensitivity: sensitivity as any, purpose: purpose as any,
     userGoal: message, retrievalHints: keywords.split(/\s+/).filter(w => w.length > 3).slice(0, 10),
+    routingSignal,
   }
 }

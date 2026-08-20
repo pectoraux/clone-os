@@ -193,17 +193,22 @@ export class FidelityEngine {
       task, input.cloneId, input.tenantId, snapshot,
     )
 
-    // Compile the bounded context
+    // Compile the bounded context with the COMPLETE professional self
+    // N1.3A.3: personality, preferences, culture are now included
     const budget = retrievalService.getBudget()
-    const persona = {
-      name: snapshot.name, domain: snapshot.domain,
-      persona: snapshot.persona, behavior: snapshot.behavior,
-      values: snapshot.professionalIdentity?.values ?? [],
-      bio: snapshot.professionalIdentity?.bio ?? null,
-      title: snapshot.professionalIdentity?.title ?? null,
-    }
     const compiled = contextCompiler.compile(
-      persona, retrieval, retrievalService.getSerializer(), budget, input.cloneVersionId,
+      {
+        name: snapshot.name, domain: snapshot.domain,
+        persona: snapshot.persona,
+        personality: snapshot.personality,
+        preferences: snapshot.preferences,
+        behavior: snapshot.behavior,
+        values: snapshot.professionalIdentity?.values ?? [],
+        culture: snapshot.professionalIdentity?.culture ?? {},
+        bio: snapshot.professionalIdentity?.bio ?? null,
+        title: snapshot.professionalIdentity?.title ?? null,
+      },
+      retrieval, retrievalService.getSerializer(), budget, input.cloneVersionId,
     )
 
     // Create the ScenarioExecution
@@ -218,14 +223,20 @@ export class FidelityEngine {
       },
     })
 
-    // Execute via CloneRuntime.execute() (the canonical path)
-    const signal: RoutingSignal = 'complex_reasoning'
-    const routing = router.select(signal)
-    const provider = routing.provider
+    // Execute via CloneRuntime.execute() — N1.3A.3: strongly typed ExecutionRequest
+    // The routing signal comes from the task (not hardcoded)
     const start = Date.now()
-
     const scenarioMessage = `SCENARIO: ${scenario.title}\n\nCONTEXT:\n${prompt.context}\n\nQUESTION:\n${prompt.question}${prompt.inputs ? '\n\nINPUTS:\n' + prompt.inputs.join('\n') : ''}\n\nProvide your professional response. Lead with your decision, then your reasoning, then actions, then risks.`
-    const execResult = await runtime.execute(compiled.systemPrompt, scenarioMessage, provider)
+    const execResult = await runtime.execute(
+      {
+        systemPrompt: compiled.systemPrompt,
+        userMessage: scenarioMessage,
+        routingSignal: task.routingSignal,
+        requestId: `fidelity_run_${execution.id}`,
+        cloneId: input.cloneId,
+      },
+      router,
+    )
     const response = { content: execResult.content, provider: execResult.providerId }
 
     const latencyMs = Date.now() - start

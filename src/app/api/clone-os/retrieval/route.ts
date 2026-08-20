@@ -63,7 +63,20 @@ export async function POST(req: NextRequest) {
     bio: clone.professionalIdentity?.bio ?? null,
     title: clone.professionalIdentity?.title ?? null,
   }
-  const compiled = compiler.compile(persona, retrieval, retrievalService.getSerializer(), budget, cloneVersionId)
+  const compiled = compiler.compile(
+    {
+      name: clone.name, domain: clone.domain,
+      persona: JSON.parse(clone.personaJson || '{}'),
+      personality: JSON.parse(clone.personalityJson || '{}'),
+      preferences: JSON.parse(clone.preferencesJson || '{}'),
+      behavior: JSON.parse(clone.behaviorJson || '{}'),
+      values: JSON.parse(clone.professionalIdentity?.valuesJson || '[]'),
+      culture: JSON.parse(clone.professionalIdentity?.cultureJson || '{}'),
+      bio: clone.professionalIdentity?.bio ?? null,
+      title: clone.professionalIdentity?.title ?? null,
+    },
+    retrieval, retrievalService.getSerializer(), budget, cloneVersionId,
+  )
 
   return NextResponse.json({
     task,
@@ -87,7 +100,7 @@ export async function POST(req: NextRequest) {
     },
     compiled: {
       systemPromptLength: compiled.systemPrompt.length,
-      systemPromptPreview: compiled.systemPrompt.slice(0, 500) + (compiled.systemPrompt.length > 500 ? '...' : ''),
+      systemPromptPreview: compiled.systemPrompt.slice(0, 2000) + (compiled.systemPrompt.length > 2000 ? '...' : ''),
       estimatedTokens: compiled.estimatedTokens,
       budget: compiled.budget.maxTokens,
       contextHash: compiled.contextHash.slice(0, 16),

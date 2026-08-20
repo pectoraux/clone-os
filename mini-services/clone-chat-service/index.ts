@@ -174,8 +174,8 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // N1.3A.2: CANONICAL EXECUTION PATH — uses retrieval, not full-clone dump
-      // Step 1: Parse the task
+      // N1.3A.3: CANONICAL EXECUTION PATH — uses retrieval, not full-clone dump
+      // Step 1: Parse the task (routing signal derived from the message)
       const task = parseTask(userText, identity.domain, session.cloneVersionId || undefined);
 
       // Step 2: Retrieve relevant artifacts (snapshot-aware if a version is specified)
@@ -190,20 +190,40 @@ io.on("connection", (socket) => {
         snapshot,
       )
 
-      // Step 3: Compile the bounded context
+      // Step 3: Compile the bounded context with the COMPLETE professional self
+      // N1.3A.3: personality, preferences, culture are now included
       const budget = retrievalService.getBudget()
       const compiled = compiler.compile(
-        { name: identity.name, domain: identity.domain, persona: identity.persona, behavior: identity.behavior, values: identity.values, bio: identity.bio, title: identity.title },
+        {
+          name: identity.name, domain: identity.domain,
+          persona: identity.persona,
+          personality: JSON.parse(identity.clone.personalityJson || '{}'),
+          preferences: JSON.parse(identity.clone.preferencesJson || '{}'),
+          behavior: identity.behavior,
+          values: identity.values,
+          culture: JSON.parse(identity.clone.professionalIdentity?.cultureJson || '{}') ||
+                   JSON.parse(identity.clone.professionalIdentity?.cultureJson || '{}'),
+          bio: identity.bio, title: identity.title,
+        },
         retrieval,
         retrievalService.getSerializer(),
         budget,
         session.cloneVersionId || undefined,
       )
 
-      // Step 4: Execute via CloneRuntime.execute() (the canonical path)
-      const routing = router.select("general_chat")
-      const provider = routing.provider
-      const execResult = await runtime.execute(compiled.systemPrompt, userText, provider)
+      // Step 4: Execute via CloneRuntime.execute() — N1.3A.3: strongly typed
+      // ExecutionRequest carries the routing signal from the task
+      const execResult = await runtime.execute(
+        {
+          systemPrompt: compiled.systemPrompt,
+          userMessage: userText,
+          routingSignal: task.routingSignal,
+          requestId: `chat_${socket.id}_${Date.now()}`,
+          principalId: session.principalId || undefined,
+          cloneId: session.cloneId,
+        },
+        router,
+      )
 
       // Persist to in-memory session (history is experience, not the clone)
       session.messages.push({ role: "user", content: userText })
@@ -215,10 +235,15 @@ io.on("connection", (socket) => {
         excludedCount: compiled.excludedArtifacts.length,
         estimatedContextTokens: compiled.estimatedTokens,
         budget: budget.maxTokens,
-        retrievalMethods: [retrievalService.constructor.name.replace("RetrievalService", "keyword")],
+        retrievalMethods: ["keyword"],
         cloneVersion: identity.cloneVersion,
         contextHash: compiled.contextHash.slice(0, 16),
         selectedArtifacts: compiled.selectedArtifacts.map(a => `${a.type}:${a.name}`),
+        // N1.3A.3: routing + provider info
+        routingSignal: task.routingSignal,
+        provider: execResult.providerId,
+        preferredProvider: execResult.preferredProviderId,
+        fellBack: execResult.fellBack,
       }
 
       io.to(socket.id).emit("clone:message", { id: generateId(), role: "clone", content: execResult.content, ts: Date.now() } as ChatMessage)

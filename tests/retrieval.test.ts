@@ -173,3 +173,128 @@ describe('Retrieval (N1.3A + N1.3A.2)', () => {
     expect(data1.compiled.contextHash).toBe(data2.compiled.contextHash)
   }, 30000)
 })
+
+describe('Redaction (N1.3A.3)', () => {
+  let cookie: string
+  let cloneId: string
+
+  beforeAll(async () => {
+    cookie = await login('sarah@clone.os', 'demo')
+    const data = await fetch(`${BASE}/api/clone-os`, { headers: { cookie } }).then(r => r.json())
+    cloneId = data.clone.id
+  }, 30000)
+
+  it('REDACT actually redacts — original content cannot reach the model', async () => {
+    // Create a restricted knowledge artifact with a unique secret string
+    const secretString = 'CONFIDENTIAL_SECRET_78921'
+    await fetch(`${BASE}/api/clone-os/learn`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({
+        cloneId,
+        interactionText: `At Acme, our proprietary formula is: ${secretString}. This is company confidential.`,
+        mode: 'teach',
+      }),
+    })
+
+    // Request retrieval with internal sensitivity (should trigger REDACT for restricted artifacts)
+    const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({
+        message: 'What is the proprietary formula?',
+        cloneId,
+      }),
+    })
+    const data = await res.json()
+
+    // The compiled system prompt must NOT contain the secret string
+    const promptPreview = data.compiled.systemPromptPreview || ''
+    expect(
+      promptPreview.includes(secretString),
+      `Secret string "${secretString}" must NOT appear in the compiled prompt. Got: ${promptPreview.slice(0, 200)}`,
+    ).toBe(false)
+
+    // If the artifact was redacted, it should appear as [REDACTED...]
+    if (data.retrieval.evidence?.some((e: any) => e.authorizationDecision === 'REDACT')) {
+      const redactedEvidence = data.retrieval.evidence.find((e: any) => e.authorizationDecision === 'REDACT')
+      expect(redactedEvidence.reason).toContain('redacted')
+    }
+  }, 30000)
+})
+
+describe('Professional Self Preservation (N1.3A.3)', () => {
+  let cookie: string
+  let cloneId: string
+
+  beforeAll(async () => {
+    cookie = await login('sarah@clone.os', 'demo')
+    const data = await fetch(`${BASE}/api/clone-os`, { headers: { cookie } }).then(r => r.json())
+    cloneId = data.clone.id
+  }, 30000)
+
+  it('personality is preserved in the compiled context', async () => {
+    const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ message: 'How do you review pipeline?', cloneId }),
+    })
+    const data = await res.json()
+    // The compiled prompt should include a Personality section
+    expect(data.compiled.systemPromptPreview.toLowerCase().includes('personality')).toBe(true)
+  }, 30000)
+
+  it('culture is preserved in the compiled context', async () => {
+    const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ message: 'What is your cultural context?', cloneId }),
+    })
+    const data = await res.json()
+    // The compiled prompt should include a Cultural context section
+    expect(data.compiled.systemPromptPreview.toLowerCase().includes('cultural')).toBe(true)
+  }, 30000)
+
+  it('preferences are preserved in the compiled context', async () => {
+    const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ message: 'What are your preferences?', cloneId }),
+    })
+    const data = await res.json()
+    // The compiled prompt should include a Core preferences section
+    expect(data.compiled.systemPromptPreview.toLowerCase().includes('preference')).toBe(true)
+  }, 30000)
+})
+
+describe('Routing Propagation (N1.3A.3)', () => {
+  let cookie: string
+  let cloneId: string
+
+  beforeAll(async () => {
+    cookie = await login('sarah@clone.os', 'demo')
+    const data = await fetch(`${BASE}/api/clone-os`, { headers: { cookie } }).then(r => r.json())
+    cloneId = data.clone.id
+  }, 30000)
+
+  it('routing signal is derived from the task', async () => {
+    // A complex analysis question should get complex_reasoning
+    const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ message: 'Analyze this complex revenue forecast strategy', cloneId }),
+    })
+    const data = await res.json()
+    expect(data.task.routingSignal).toBe('complex_reasoning')
+  }, 30000)
+
+  it('general chat gets general_chat signal', async () => {
+    const res = await fetch(`${BASE}/api/clone-os/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ message: 'How do you review pipeline?', cloneId }),
+    })
+    const data = await res.json()
+    expect(data.task.routingSignal).toBe('general_chat')
+  }, 30000)
+})

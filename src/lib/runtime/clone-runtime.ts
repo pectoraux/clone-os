@@ -14,6 +14,30 @@
 // (e.g., a structured tool-call context) without changing the call sites.
 
 import type { Clone, CloneVersion, ProfessionalIdentity, Skill, Knowledge, Memory, Policy, Workflow, User } from '@prisma/client'
+import type { ModelRouter, RoutingSignal } from '@/lib/runtime/model-provider'
+
+// N1.3A.3: ExecutionRequest — strongly typed, carries routing context
+export interface ExecutionRequest {
+  systemPrompt: string         // the compiled bounded context
+  userMessage: string          // the user's message / scenario prompt
+  routingSignal: RoutingSignal // derived from TaskContext, NOT hardcoded
+  requestId: string
+  principalId?: string
+  cloneId?: string
+  agentId?: string
+  environmentId?: string
+  metadata?: Record<string, unknown>
+}
+
+// N1.3A.3: ExecutionResult — carries routing decisions for observability
+export interface ExecutionResult {
+  content: string
+  providerId: string          // which provider was actually used
+  routingSignal: RoutingSignal
+  preferredProviderId: string // which provider was preferred (may differ due to fallback)
+  fellBack: boolean           // true if the preferred provider was a stub and fell back
+  latencyMs: number
+}
 
 export interface CloneRuntimeInput {
   clone: Clone & {
@@ -189,30 +213,39 @@ export class CloneRuntime {
     return parts.join('\n')
   }
 
-  // N1.3A.2: Canonical execution path. Takes an already-compiled
-  // ExecutionContext (from ContextCompiler) + a user message + a
-  // ModelProvider → produces a response. This is the target runtime
-  // boundary: RetrievalService → ContextCompiler → CloneRuntime.execute().
+  // N1.3A.3: Canonical execution path. Strongly typed — takes an
+  // ExecutionRequest (with compiled systemPrompt + userMessage + routing
+  // signal + metadata) + a ModelRouter → produces a response.
   //
-  // The old buildContext() + toSystemPrompt() path is LEGACY — it loads
-  // the entire clone into the prompt. New executions should use execute()
-  // with a CompiledExecutionContext from the retrieval pipeline.
+  // The runtime determines which provider/model to use through the
+  // ModelRouter. The routing signal comes from the TaskContext, NOT
+  // hardcoded inside the executor.
+  //
+  // Model independence: the path is CloneRuntime → ModelRouter →
+  // ModelProvider. Never CloneRuntime → vendor SDK.
   async execute(
-    systemPrompt: string,
-    userMessage: string,
-    provider: any,
-  ): Promise<{ content: string; providerId: string; latencyMs: number }> {
+    request: ExecutionRequest,
+    router: ModelRouter,
+  ): Promise<ExecutionResult> {
+    const routing = router.select(request.routingSignal)
+    const provider = routing.provider
     const start = Date.now()
     const response = await provider.generate({
       messages: [
-        { role: 'assistant', content: systemPrompt },
-        { role: 'user', content: userMessage },
+        { role: 'assistant', content: request.systemPrompt },
+        { role: 'user', content: request.userMessage },
       ],
-      signal: 'general_chat',
+      signal: request.routingSignal,
+      requestId: request.requestId,
+      principalId: request.principalId,
+      cloneId: request.cloneId,
     })
     return {
       content: response.content,
-      providerId: response.provider,
+      providerId: provider.id,
+      routingSignal: request.routingSignal,
+      preferredProviderId: routing.preferredId,
+      fellBack: routing.fellBack,
       latencyMs: Date.now() - start,
     }
   }
